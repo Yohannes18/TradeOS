@@ -46,18 +46,30 @@ ALTER TABLE public.trades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checklist_logs ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for settings
+DROP POLICY IF EXISTS "settings_select_own" ON public.settings;
+DROP POLICY IF EXISTS "settings_insert_own" ON public.settings;
+DROP POLICY IF EXISTS "settings_update_own" ON public.settings;
+DROP POLICY IF EXISTS "settings_delete_own" ON public.settings;
 CREATE POLICY "settings_select_own" ON public.settings FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "settings_insert_own" ON public.settings FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "settings_update_own" ON public.settings FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "settings_delete_own" ON public.settings FOR DELETE USING (auth.uid() = user_id);
 
 -- RLS Policies for trades
+DROP POLICY IF EXISTS "trades_select_own" ON public.trades;
+DROP POLICY IF EXISTS "trades_insert_own" ON public.trades;
+DROP POLICY IF EXISTS "trades_update_own" ON public.trades;
+DROP POLICY IF EXISTS "trades_delete_own" ON public.trades;
 CREATE POLICY "trades_select_own" ON public.trades FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "trades_insert_own" ON public.trades FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "trades_update_own" ON public.trades FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "trades_delete_own" ON public.trades FOR DELETE USING (auth.uid() = user_id);
 
 -- RLS Policies for checklist_logs
+DROP POLICY IF EXISTS "checklist_logs_select_own" ON public.checklist_logs;
+DROP POLICY IF EXISTS "checklist_logs_insert_own" ON public.checklist_logs;
+DROP POLICY IF EXISTS "checklist_logs_update_own" ON public.checklist_logs;
+DROP POLICY IF EXISTS "checklist_logs_delete_own" ON public.checklist_logs;
 CREATE POLICY "checklist_logs_select_own" ON public.checklist_logs FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "checklist_logs_insert_own" ON public.checklist_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "checklist_logs_update_own" ON public.checklist_logs FOR UPDATE USING (auth.uid() = user_id);
