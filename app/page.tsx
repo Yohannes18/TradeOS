@@ -59,7 +59,7 @@ export default function HomePage() {
             icon={CheckCircle}
             title="Pre-Trade Checklist"
             description="Score your setups with a structured 5-point checklist. Only take high-probability trades."
-            color="text-profit bg-profit/10"
+            color="text-emerald-500 bg-emerald-500/10"
           />
           <FeatureCard
             icon={Calculator}
@@ -71,7 +71,7 @@ export default function HomePage() {
             icon={BookOpen}
             title="Trade Journal"
             description="Track every trade. Analyze your win rate, average score, and identify patterns."
-            color="text-chart-4 bg-chart-4/10"
+            color="text-amber-500 bg-amber-500/10"
           />
           <FeatureCard
             icon={BarChart3}
@@ -83,13 +83,13 @@ export default function HomePage() {
             icon={Shield}
             title="Risk Management"
             description="Set your account balance and risk percentage. The calculator does the math for you."
-            color="text-loss bg-loss/10"
+            color="text-red-500 bg-red-500/10"
           />
           <FeatureCard
             icon={TrendingUp}
             title="Performance Tracking"
             description="See your stats at a glance. Win rate, total trades, and average checklist score."
-            color="text-profit bg-profit/10"
+            color="text-emerald-500 bg-emerald-500/10"
           />
         </div>
       </section>
