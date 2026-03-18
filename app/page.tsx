@@ -1,17 +1,10 @@
+'use client'
+
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { TrendingUp, CheckCircle, Calculator, BookOpen, Shield, BarChart3 } from 'lucide-react'
 
-export default async function HomePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (user) {
-    redirect('/dashboard')
-  }
-
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -62,55 +55,42 @@ export default async function HomePage() {
       {/* Features */}
       <section className="container mx-auto px-4 py-16">
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {[
-            {
-              icon: CheckCircle,
-              title: 'Pre-Trade Checklist',
-              description: 'Score your setups with a structured 5-point checklist. Only take high-probability trades.',
-              color: 'text-profit bg-profit/10',
-            },
-            {
-              icon: Calculator,
-              title: 'Position Size Calculator',
-              description: 'Never risk too much. Calculate the perfect position size based on your risk tolerance.',
-              color: 'text-primary bg-primary/10',
-            },
-            {
-              icon: BookOpen,
-              title: 'Trade Journal',
-              description: 'Track every trade. Analyze your win rate, average score, and identify patterns.',
-              color: 'text-chart-4 bg-chart-4/10',
-            },
-            {
-              icon: BarChart3,
-              title: 'TradingView Integration',
-              description: 'Quick access to charts. Open any symbol directly in TradingView from the dashboard.',
-              color: 'text-primary bg-primary/10',
-            },
-            {
-              icon: Shield,
-              title: 'Risk Management',
-              description: 'Set your account balance and risk percentage. The calculator does the math for you.',
-              color: 'text-loss bg-loss/10',
-            },
-            {
-              icon: TrendingUp,
-              title: 'Performance Tracking',
-              description: 'See your stats at a glance. Win rate, total trades, and average checklist score.',
-              color: 'text-profit bg-profit/10',
-            },
-          ].map((feature) => (
-            <div
-              key={feature.title}
-              className="p-6 rounded-xl border border-border bg-card hover:bg-secondary/30 transition-colors"
-            >
-              <div className={`w-10 h-10 rounded-lg ${feature.color} flex items-center justify-center mb-4`}>
-                <feature.icon className="h-5 w-5" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
-              <p className="text-sm text-muted-foreground">{feature.description}</p>
-            </div>
-          ))}
+          <FeatureCard
+            icon={CheckCircle}
+            title="Pre-Trade Checklist"
+            description="Score your setups with a structured 5-point checklist. Only take high-probability trades."
+            color="text-profit bg-profit/10"
+          />
+          <FeatureCard
+            icon={Calculator}
+            title="Position Size Calculator"
+            description="Never risk too much. Calculate the perfect position size based on your risk tolerance."
+            color="text-primary bg-primary/10"
+          />
+          <FeatureCard
+            icon={BookOpen}
+            title="Trade Journal"
+            description="Track every trade. Analyze your win rate, average score, and identify patterns."
+            color="text-chart-4 bg-chart-4/10"
+          />
+          <FeatureCard
+            icon={BarChart3}
+            title="TradingView Integration"
+            description="Quick access to charts. Open any symbol directly in TradingView from the dashboard."
+            color="text-primary bg-primary/10"
+          />
+          <FeatureCard
+            icon={Shield}
+            title="Risk Management"
+            description="Set your account balance and risk percentage. The calculator does the math for you."
+            color="text-loss bg-loss/10"
+          />
+          <FeatureCard
+            icon={TrendingUp}
+            title="Performance Tracking"
+            description="See your stats at a glance. Win rate, total trades, and average checklist score."
+            color="text-profit bg-profit/10"
+          />
         </div>
       </section>
 
@@ -138,6 +118,28 @@ export default async function HomePage() {
           <p>Built for traders, by traders. TradeOS helps you trade smarter, not harder.</p>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function FeatureCard({ 
+  icon: Icon, 
+  title, 
+  description, 
+  color 
+}: { 
+  icon: React.ElementType
+  title: string
+  description: string
+  color: string 
+}) {
+  return (
+    <div className="p-6 rounded-xl border border-border bg-card hover:bg-secondary/30 transition-colors">
+      <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center mb-4`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   )
 }

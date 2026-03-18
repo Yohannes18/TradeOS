@@ -2,6 +2,9 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
+  // Allow access to home page even if Supabase fails
+  const pathname = request.nextUrl.pathname
+  
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -37,13 +40,18 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: If you remove getUser() and you use server-side rendering
   // with the Supabase client, your users may be randomly logged out.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data?.user
+  } catch (error) {
+    console.log("[v0] Middleware auth error:", error)
+    // Continue without user - let the page handle it
+  }
 
   if (
     // if the user is not logged in and the dashboard is accessed, redirect to the login page
-    request.nextUrl.pathname.startsWith('/dashboard') &&
+    pathname.startsWith('/dashboard') &&
     !user
   ) {
     // no user, redirect to login
@@ -54,7 +62,7 @@ export async function updateSession(request: NextRequest) {
 
   // If user is logged in and tries to access auth pages, redirect to dashboard
   if (
-    request.nextUrl.pathname.startsWith('/auth') &&
+    pathname.startsWith('/auth') &&
     user
   ) {
     const url = request.nextUrl.clone()
