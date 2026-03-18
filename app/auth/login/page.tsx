@@ -17,12 +17,20 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
+
+    let supabase
+    try {
+      supabase = createClient()
+    } catch {
+      setError('Supabase is not configured. Add your Supabase environment variables and try again.')
+      setIsLoading(false)
+      return
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,

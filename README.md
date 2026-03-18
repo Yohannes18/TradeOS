@@ -1,35 +1,99 @@
 # TradeOS
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+TradeOS is a modern trading workspace for planning, executing, and reviewing trades with a structured process. It combines pre-trade validation, risk management, journaling, and account settings in one dashboard.
 
-## Built with v0
+## Highlights
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+- Structured pre-trade checklist with score logging
+- Risk calculator with position sizing workflow
+- Trade journal with performance tracking
+- User-specific settings and preferences
+- Supabase authentication and data storage
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_sotJ5raoBTpvmitKwUY2FustwXyo)
+## Tech Stack
 
-## Getting Started
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS + Radix UI components
+- Supabase (`@supabase/supabase-js`, `@supabase/ssr`)
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+
+- npm (or pnpm/yarn)
+- A Supabase project
+
+## Environment Setup
+
+Create your local environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Set the following variables in `.env.local`:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` (optional, recommended for local auth redirect)
+
+## Database Initialization (Supabase)
+
+If your Supabase database is empty, run the bootstrap script once:
+
+1. Open Supabase Dashboard → SQL Editor
+2. Open `scripts/000_init_system.sql`
+3. Paste and run the script
+
+The script creates:
+
+- `public.settings`
+- `public.trades`
+- `public.checklist_logs`
+- RLS policies for all application tables
+- A trigger that auto-creates default settings for new users
+- Backfill settings for existing users
+
+## Running Locally
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Available Scripts
 
-## Learn More
+- `npm run dev` — start local dev server
+- `npm run build` — create production build
+- `npm run start` — run production build locally
+- `npm run lint` — run lint checks
 
-To learn more, take a look at the following resources:
+## Deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+Deploy on Vercel:
 
-<a href="https://v0.app/chat/api/kiro/clone/Yohannes18/TradeOS" alt="Open in Kiro"><img src="https://pdgvvgmkdvyeydso.public.blob.vercel-storage.com/open%20in%20kiro.svg?sanitize=true" /></a>
+1. Import this project in Vercel (or use `vercel` CLI)
+2. Add the same environment variables from `.env.local` in the Vercel project settings
+3. Trigger deployment
+
+## Project Structure
+
+- `app/` — routes, layouts, and pages
+- `components/` — UI and feature components
+- `lib/supabase/` — Supabase server/client/middleware helpers
+- `scripts/` — SQL schema and initialization scripts
+
+## Notes
+
+- The app supports running without Supabase env values for basic shell rendering, but authentication and data operations require valid Supabase configuration.
+- Keep credentials in `.env.local`; do not commit secrets.
