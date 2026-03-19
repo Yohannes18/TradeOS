@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -10,13 +10,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { TrendingUp } from 'lucide-react'
+import { OAuthButtons } from '@/components/auth/oauth-buttons'
+import { sanitizeNextPath } from '@/lib/auth/redirect'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [nextPath, setNextPath] = useState('/dashboard')
   const router = useRouter()
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setNextPath(sanitizeNextPath(params.get('next')))
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,7 +51,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/dashboard')
+    router.push(nextPath)
     router.refresh()
   }
 
@@ -63,6 +71,12 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <OAuthButtons nextPath={nextPath} onError={(message) => setError(message || null)} />
+          <div className="my-4 flex items-center gap-2">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <Field>
               <FieldLabel htmlFor="email">Email</FieldLabel>

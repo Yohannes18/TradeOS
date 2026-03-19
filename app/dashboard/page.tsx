@@ -18,9 +18,9 @@ export default async function DashboardPage() {
     .single()
 
   return (
-    <DashboardContent 
-      userId={user.id} 
-      settings={settings || { risk_percent: 1, account_balance: 10000 }} 
+    <DashboardContent
+      userId={user.id}
+      settings={settings || { risk_percent: 1, account_balance: 10000 }}
     />
   )
 }

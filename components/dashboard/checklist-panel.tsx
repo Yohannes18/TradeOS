@@ -17,49 +17,77 @@ interface ChecklistItem {
 }
 
 const checklistItems: ChecklistItem[] = [
-  { id: 'trend', label: 'Trend Alignment', description: 'Price is moving with higher timeframe trend', icon: TrendingUp, weight: 2 },
-  { id: 'zone', label: 'Key Zone', description: 'Trade is at significant support/resistance', icon: Target, weight: 2 },
-  { id: 'liquidity', label: 'Liquidity Sweep', description: 'Recent liquidity grab or stop hunt observed', icon: Droplets, weight: 2 },
-  { id: 'structure', label: 'Market Structure', description: 'Clear break of structure confirmed', icon: GitBranch, weight: 2 },
-  { id: 'rr', label: 'Risk/Reward', description: 'Minimum 2:1 risk to reward ratio', icon: Scale, weight: 2 },
+  { id: 'trend', label: 'HTF Trend', description: 'Higher timeframe trend supports your trade direction', icon: TrendingUp, weight: 2 },
+  { id: 'zone', label: 'Zone Quality', description: 'Entry zone has clean reaction and clear context', icon: Target, weight: 3 },
+  { id: 'liquidity', label: 'Liquidity Sweep', description: 'Valid liquidity event confirms market intent', icon: Droplets, weight: 1 },
+  { id: 'structure', label: 'Structure Break', description: 'Break of structure validates execution trigger', icon: GitBranch, weight: 2 },
+  { id: 'rr', label: 'RR Valid', description: 'Risk/reward setup is acceptable', icon: Scale, weight: 2 },
 ]
 
 interface ChecklistPanelProps {
   userId: string
   onScoreChange?: (score: number) => void
+  onDecisionChange?: (decision: 'VALID' | 'RISKY' | 'NO TRADE') => void
 }
 
-export function ChecklistPanel({ userId, onScoreChange }: ChecklistPanelProps) {
+export function ChecklistPanel({ userId, onScoreChange, onDecisionChange }: ChecklistPanelProps) {
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({})
   const [isSaving, setIsSaving] = useState(false)
   const supabase = createClient()
 
-  const totalScore = Object.entries(checkedItems).reduce((acc, [id, checked]) => {
-    if (checked) {
-      const item = checklistItems.find((i) => i.id === id)
-      return acc + (item?.weight ?? 0)
-    }
-    return acc
-  }, 0)
-
   const maxScore = checklistItems.reduce((acc, item) => acc + item.weight, 0)
+
+  const totalScore = (() => {
+    const baseScore = checklistItems.reduce((acc, item) => {
+      return acc + (checkedItems[item.id] ? item.weight : 0)
+    }, 0)
+
+    let finalScore = baseScore
+
+    if (!checkedItems.trend && checkedItems.structure) {
+      finalScore -= 2
+    }
+
+    if (!checkedItems.rr) {
+      finalScore = 0
+    }
+
+    return Math.max(0, Math.min(maxScore, finalScore))
+  })()
+
+  const decision: 'VALID' | 'RISKY' | 'NO TRADE' =
+    totalScore >= 8 ? 'VALID' : totalScore >= 5 ? 'RISKY' : 'NO TRADE'
 
   const handleCheckChange = (id: string, checked: boolean) => {
     const newChecked = { ...checkedItems, [id]: checked }
     setCheckedItems(newChecked)
-    const newScore = Object.entries(newChecked).reduce((acc, [itemId, isChecked]) => {
-      if (isChecked) {
-        const item = checklistItems.find((i) => i.id === itemId)
-        return acc + (item?.weight ?? 0)
-      }
-      return acc
+
+    const baseScore = checklistItems.reduce((acc, item) => {
+      return acc + (newChecked[item.id] ? item.weight : 0)
     }, 0)
+
+    let newScore = baseScore
+
+    if (!newChecked.trend && newChecked.structure) {
+      newScore -= 2
+    }
+
+    if (!newChecked.rr) {
+      newScore = 0
+    }
+
+    newScore = Math.max(0, Math.min(maxScore, newScore))
+    const newDecision: 'VALID' | 'RISKY' | 'NO TRADE' =
+      newScore >= 8 ? 'VALID' : newScore >= 5 ? 'RISKY' : 'NO TRADE'
+
     onScoreChange?.(newScore)
+    onDecisionChange?.(newDecision)
   }
 
   const handleReset = () => {
     setCheckedItems({})
     onScoreChange?.(0)
+    onDecisionChange?.('NO TRADE')
   }
 
   const handleSave = async () => {
@@ -86,11 +114,7 @@ export function ChecklistPanel({ userId, onScoreChange }: ChecklistPanelProps) {
   }
 
   const getScoreLabel = () => {
-    const percentage = (totalScore / maxScore) * 100
-    if (percentage >= 80) return 'High Probability'
-    if (percentage >= 60) return 'Moderate'
-    if (percentage >= 40) return 'Low'
-    return 'Avoid Trade'
+    return decision
   }
 
   return (
@@ -154,10 +178,9 @@ export function ChecklistPanel({ userId, onScoreChange }: ChecklistPanelProps) {
               </div>
             </div>
             <div className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium', {
-              'bg-profit/10 text-profit': (totalScore / maxScore) >= 0.8,
-              'bg-chart-4/10 text-chart-4': (totalScore / maxScore) >= 0.6 && (totalScore / maxScore) < 0.8,
-              'bg-muted text-muted-foreground': (totalScore / maxScore) >= 0.4 && (totalScore / maxScore) < 0.6,
-              'bg-loss/10 text-loss': (totalScore / maxScore) < 0.4,
+              'bg-profit/10 text-profit': decision === 'VALID',
+              'bg-chart-4/10 text-chart-4': decision === 'RISKY',
+              'bg-loss/10 text-loss': decision === 'NO TRADE',
             })}>
               <CheckCircle className="h-3.5 w-3.5" />
               {getScoreLabel()}

@@ -37,6 +37,16 @@ Set the following variables in `.env.local`:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` (optional, recommended for local auth redirect)
+- `NEXT_PUBLIC_SITE_URL` (required for consistent OAuth callback redirects across environments)
+- `GEMINI_API_KEY` (optional, enables Gemini-powered analysis)
+- `DEEPSEEK_API_KEY` (optional, enables DeepSeek-powered analysis)
+
+If AI keys are not set, TradeOS will still run automated analysis using its built-in heuristic engine.
+
+For OAuth providers, enable Google and Apple in Supabase Auth and add your callback URL:
+
+- `https://YOUR_DOMAIN/auth/callback` (production)
+- `http://localhost:3000/auth/callback` (local)
 
 ## Database Initialization (Supabase)
 

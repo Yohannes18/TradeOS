@@ -11,8 +11,20 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useState } from 'react'
-import { TrendingUp, TrendingDown, Minus, FileText } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, FileText, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+
+type AnalysisBias = 'bullish' | 'bearish' | 'neutral'
+
+interface AutoAnalysisResult {
+  recommendedBias: AnalysisBias
+  confidence: number
+  summary: string
+  keyDrivers: string[]
+  riskFlags: string[]
+  providersUsed: string[]
+}
 
 interface FundamentalsPanelProps {
   pair?: string
@@ -21,10 +33,13 @@ interface FundamentalsPanelProps {
 }
 
 export function FundamentalsPanel({ pair = 'XAUUSD', onBiasChange, onNotesChange }: FundamentalsPanelProps) {
-  const [bias, setBias] = useState<'bullish' | 'bearish' | 'neutral'>('neutral')
+  const [bias, setBias] = useState<AnalysisBias>('neutral')
+  const [timeframe, setTimeframe] = useState<'scalp' | 'intraday' | 'swing' | 'position'>('intraday')
   const [notes, setNotes] = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysis, setAnalysis] = useState<AutoAnalysisResult | null>(null)
 
-  const handleBiasChange = (newBias: 'bullish' | 'bearish' | 'neutral') => {
+  const handleBiasChange = (newBias: AnalysisBias) => {
     setBias(newBias)
     onBiasChange?.(newBias)
   }
@@ -34,13 +49,74 @@ export function FundamentalsPanel({ pair = 'XAUUSD', onBiasChange, onNotesChange
     onNotesChange?.(value)
   }
 
+  const handleAutoAnalyze = async () => {
+    setIsAnalyzing(true)
+
+    try {
+      const response = await fetch('/api/analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pair,
+          timeframe,
+          notes,
+          manualBias: bias,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data?.result) {
+        throw new Error(data?.error || 'Unable to generate analysis.')
+      }
+
+      const result = data.result as AutoAnalysisResult
+      setAnalysis(result)
+      handleBiasChange(result.recommendedBias)
+
+      const generatedNotes = [
+        `Auto Analysis (${result.providersUsed.join(', ')}):`,
+        result.summary,
+        '',
+        'Key Drivers:',
+        ...result.keyDrivers.map((item) => `- ${item}`),
+        '',
+        'Risk Flags:',
+        ...(result.riskFlags.length > 0
+          ? result.riskFlags.map((item) => `- ${item}`)
+          : ['- No major risk flags identified.']),
+      ].join('\n')
+
+      handleNotesChange(generatedNotes)
+      toast.success('Auto analysis generated successfully.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to run auto analysis.')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   return (
     <Card className="h-full flex flex-col border-border bg-card">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          Trade Analysis
-        </CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            Trade Analysis
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleAutoAnalyze}
+            disabled={isAnalyzing}
+            className="gap-1.5"
+          >
+            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Auto Analyze
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
         <div>
@@ -88,7 +164,7 @@ export function FundamentalsPanel({ pair = 'XAUUSD', onBiasChange, onNotesChange
           <label className="text-sm font-medium text-muted-foreground mb-2 block">
             Timeframe
           </label>
-          <Select defaultValue="intraday">
+          <Select value={timeframe} onValueChange={(value) => setTimeframe(value as typeof timeframe)}>
             <SelectTrigger className="bg-secondary border-border">
               <SelectValue />
             </SelectTrigger>
@@ -112,6 +188,21 @@ export function FundamentalsPanel({ pair = 'XAUUSD', onBiasChange, onNotesChange
             className="flex-1 min-h-[120px] resize-none bg-secondary border-border text-foreground placeholder:text-muted-foreground"
           />
         </div>
+
+        {analysis && (
+          <div className="rounded-md border border-border bg-secondary/50 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-foreground">Automated Signal</p>
+              <span className="text-xs text-muted-foreground">
+                Confidence: {analysis.confidence}%
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">{analysis.summary}</p>
+            <p className="text-xs text-muted-foreground">
+              Providers: {analysis.providersUsed.join(', ')}
+            </p>
+          </div>
+        )}
 
         <div className="border-t border-border pt-4">
           <h4 className="text-sm font-medium text-foreground mb-2">Quick Reference</h4>

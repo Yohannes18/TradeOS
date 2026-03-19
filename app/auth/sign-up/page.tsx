@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { TrendingUp, CheckCircle } from 'lucide-react'
+import { OAuthButtons } from '@/components/auth/oauth-buttons'
+import { buildOAuthRedirectTo } from '@/lib/auth/redirect'
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('')
@@ -48,8 +50,7 @@ export default function SignUpPage() {
       email,
       password,
       options: {
-        emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-          `${window.location.origin}/dashboard`,
+        emailRedirectTo: buildOAuthRedirectTo('/dashboard'),
       },
     })
 
@@ -110,6 +111,12 @@ export default function SignUpPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <OAuthButtons onError={(message) => setError(message || null)} />
+          <div className="my-4 flex items-center gap-2">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
           <form onSubmit={handleSignUp} className="flex flex-col gap-4">
             <Field>
               <FieldLabel htmlFor="email">Email</FieldLabel>

@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { TrendingUp, LayoutDashboard, BookOpen, Settings, LogOut, User as UserIcon } from 'lucide-react'
+import { TrendingUp, LayoutDashboard, BrainCircuit, Settings, LogOut, User as UserIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface DashboardNavProps {
@@ -21,7 +21,7 @@ interface DashboardNavProps {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/journal', label: 'Journal', icon: BookOpen },
+  { href: '/dashboard/analysis', label: 'Trading Analysis', icon: BrainCircuit },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -91,9 +91,9 @@ export function DashboardNav({ user }: DashboardNavProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild className="md:hidden">
-              <Link href="/dashboard/journal">
-                <BookOpen className="mr-2 h-4 w-4" />
-                Journal
+              <Link href="/dashboard/analysis">
+                <BrainCircuit className="mr-2 h-4 w-4" />
+                Trading Analysis
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild className="md:hidden">

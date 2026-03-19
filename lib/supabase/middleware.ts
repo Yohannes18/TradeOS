@@ -4,6 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function updateSession(request: NextRequest) {
   // Allow access to home page even if Supabase fails
   const pathname = request.nextUrl.pathname
+  const isProtectedPath = pathname.startsWith('/dashboard')
+  const isAuthPath = pathname.startsWith('/auth')
+  const isAuthCallbackPath = pathname.startsWith('/auth/callback')
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -60,18 +63,21 @@ export async function updateSession(request: NextRequest) {
 
   if (
     // if the user is not logged in and the dashboard is accessed, redirect to the login page
-    pathname.startsWith('/dashboard') &&
+    isProtectedPath &&
     !user
   ) {
     // no user, redirect to login
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
+    const fullPath = `${pathname}${request.nextUrl.search}`
+    url.searchParams.set('next', fullPath)
     return NextResponse.redirect(url)
   }
 
   // If user is logged in and tries to access auth pages, redirect to dashboard
   if (
-    pathname.startsWith('/auth') &&
+    isAuthPath &&
+    !isAuthCallbackPath &&
     user
   ) {
     const url = request.nextUrl.clone()
