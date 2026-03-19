@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ClipboardCheck, CandlestickChart, BrainCircuit } from 'lucide-react'
 import { toast } from 'sonner'
+import type { SessionValue } from '@/lib/session'
 
 interface Settings {
   risk_percent: number
@@ -19,6 +20,12 @@ type Mode = 'checklist' | 'execution' | 'analysis'
 
 type TradeDecision = 'VALID' | 'RISKY' | 'NO TRADE'
 
+type ChecklistContext = {
+  session: SessionValue
+  regime: 'trend' | 'range' | 'volatile'
+  rr: number
+}
+
 interface DashboardContentProps {
   userId: string
   settings: Settings
@@ -27,10 +34,16 @@ interface DashboardContentProps {
 export function DashboardContent({ userId, settings }: DashboardContentProps) {
   const [mode, setMode] = useState<Mode>('checklist')
   const [selectedPair, setSelectedPair] = useState('XAUUSD')
-  const [bias, setBias] = useState<'bullish' | 'bearish' | 'neutral'>('neutral')
-  const [notes, setNotes] = useState('')
   const [score, setScore] = useState(0)
   const [decision, setDecision] = useState<TradeDecision>('NO TRADE')
+  const [checklistContext, setChecklistContext] = useState<ChecklistContext>({
+    session: 'london',
+    regime: 'range',
+    rr: 1,
+  })
+  const [lastChecklistLogId, setLastChecklistLogId] = useState<string | null>(null)
+  const bias: 'bullish' | 'bearish' | 'neutral' = 'neutral'
+  const notes = ''
   const supabase = createClient()
   const router = useRouter()
 
@@ -44,24 +57,46 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
     potentialProfit: number
     riskReward: number
   }) => {
-    const { error } = await supabase.from('trades').insert({
+    const setupGrade = score >= 8 ? 'A' : score >= 6 ? 'B' : 'C'
+    const direction: 'buy' | 'sell' = trade.entry >= trade.sl ? 'buy' : 'sell'
+
+    const { data, error } = await supabase.from('trades').insert({
       user_id: userId,
       pair: trade.pair,
       score,
       bias,
+      direction,
       entry: trade.entry,
       sl: trade.sl,
       tp: trade.tp,
+      rr: trade.riskReward,
+      risk_amount: trade.riskAmount,
+      position_size: trade.positionSize,
       result: 'pending',
+      checklist_score: score,
+      setup_grade: setupGrade,
+      fundamental_bias: bias,
+      session: checklistContext.session,
+      market_regime: checklistContext.regime,
+      trade_date: new Date().toISOString().slice(0, 10),
       notes,
-    })
+    }).select('id').single()
 
     if (error) {
       toast.error('Failed to log trade. Please try again.')
       return
     }
 
-    toast.success('Trade logged successfully')
+    if (data?.id && lastChecklistLogId) {
+      await supabase
+        .from('checklist_logs')
+        .update({ trade_id: data.id })
+        .eq('id', lastChecklistLogId)
+        .eq('user_id', userId)
+      setLastChecklistLogId(null)
+    }
+
+    toast.success('Trade logged in journal')
 
     setMode('analysis')
     router.refresh()
@@ -92,7 +127,7 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
           onClick={() => setMode('analysis')}
         >
           <BrainCircuit className="h-4 w-4" />
-          Trading Analysis
+          AI Analysis
         </Button>
       </div>
 
@@ -102,6 +137,8 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
             userId={userId}
             onScoreChange={setScore}
             onDecisionChange={setDecision}
+            onContextChange={setChecklistContext}
+            onLogSaved={setLastChecklistLogId}
           />
         )}
 
@@ -113,8 +150,6 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
             accountBalance={settings.account_balance}
             riskPercent={settings.risk_percent}
             onPairSelect={setSelectedPair}
-            onBiasChange={setBias}
-            onNotesChange={setNotes}
             onTradeSubmit={handleTradeSubmit}
           />
         )}

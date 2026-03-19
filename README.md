@@ -56,11 +56,19 @@ If your Supabase database is empty, run the bootstrap script once:
 2. Open `scripts/000_init_system.sql`
 3. Paste and run the script
 
+For the full trading ecosystem schema (profiles, advanced trade fields, trade images, economic events, and calendar RPC queries), run after bootstrap:
+
+1. Open `scripts/003_trading_ecosystem_upgrade.sql`
+2. Paste and run in Supabase SQL Editor
+
 The script creates:
 
 - `public.settings`
 - `public.trades`
 - `public.checklist_logs`
+- `public.profiles`
+- `public.trade_images`
+- `public.economic_events`
 - RLS policies for all application tables
 - A trigger that auto-creates default settings for new users
 - Backfill settings for existing users

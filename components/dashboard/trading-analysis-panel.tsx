@@ -1,40 +1,69 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, RefreshCw, BrainCircuit, CalendarDays, CalendarRange, Calendar } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface MacroBrief {
+interface MacroDeskReport {
     generatedAt: string
     sources: string[]
-    daily: string[]
-    weekly: string[]
-    monthly: string[]
-    strategy: string[]
-    keyLevels: string[]
+    macroOverview: string[]
+    marketDrivers: string[]
+    crossAsset: {
+        gold: string[]
+        indices: string[]
+    }
+    newsSentiment: string[]
+    aiDecision: {
+        goldBias: 'Bullish' | 'Bearish' | 'Neutral'
+        indicesBias: 'Bullish' | 'Bearish' | 'Neutral'
+        confidence: number
+        reasoning: string[]
+    }
+    tradeImplication: {
+        whatToDo: string[]
+        whatToAvoid: string[]
+        confirmationSignals: string[]
+    }
+    riskFactors: string[]
+    decisionEngine: {
+        checklistScore: number
+        signal: 'BUY' | 'SELL' | 'WAIT' | 'NO TRADE'
+        confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+        status: 'ALIGNED' | 'CONFLICT' | 'NEUTRAL'
+    }
+    advancedEdge: {
+        marketRegime: 'trending' | 'range' | 'volatile'
+        conflictDetection: string
+        scoreWeighting: string[]
+        eventAwareness: string
+    }
 }
-
-type ViewMode = 'daily' | 'weekly' | 'monthly' | 'all'
 
 export function TradingAnalysisPanel() {
     const [loading, setLoading] = useState(true)
-    const [data, setData] = useState<MacroBrief | null>(null)
-    const [view, setView] = useState<ViewMode>('all')
+    const [data, setData] = useState<MacroDeskReport | null>(null)
+    const [score, setScore] = useState(7)
+    const [tradeIntent, setTradeIntent] = useState<'buy' | 'sell' | 'none'>('none')
 
     const fetchMacroBrief = async () => {
         setLoading(true)
         try {
-            const response = await fetch('/api/macro-brief', { cache: 'no-store' })
+            const params = new URLSearchParams({ score: String(score) })
+            if (tradeIntent !== 'none') {
+                params.set('trade', tradeIntent)
+            }
+            const response = await fetch(`/api/macro-brief?${params.toString()}`, { cache: 'no-store' })
             const payload = await response.json()
 
             if (!response.ok || !payload?.result) {
                 throw new Error(payload?.error || 'Could not load trading analysis.')
             }
 
-            setData(payload.result as MacroBrief)
+            setData(payload.result as MacroDeskReport)
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to load trading analysis.')
         } finally {
@@ -46,34 +75,40 @@ export function TradingAnalysisPanel() {
         fetchMacroBrief()
     }, [])
 
-    const sections = useMemo(() => {
-        if (!data) return [] as Array<{ key: string; title: string; items: string[]; icon: React.ReactNode }>
-
-        const mapped = [
-            { key: 'daily', title: 'Daily Macro Trend', items: data.daily, icon: <Calendar className="h-4 w-4" /> },
-            { key: 'weekly', title: 'Weekly Macro Trend', items: data.weekly, icon: <CalendarDays className="h-4 w-4" /> },
-            { key: 'monthly', title: 'Monthly Macro Trend', items: data.monthly, icon: <CalendarRange className="h-4 w-4" /> },
-            { key: 'strategy', title: 'Strategic AI Thinking', items: data.strategy, icon: <BrainCircuit className="h-4 w-4" /> },
-            { key: 'levels', title: 'Key Levels & News', items: data.keyLevels, icon: <RefreshCw className="h-4 w-4" /> },
-        ]
-
-        if (view === 'all') return mapped
-        if (view === 'daily') return mapped.filter((item) => item.key === 'daily' || item.key === 'strategy' || item.key === 'levels')
-        if (view === 'weekly') return mapped.filter((item) => item.key === 'weekly' || item.key === 'strategy' || item.key === 'levels')
-        return mapped.filter((item) => item.key === 'monthly' || item.key === 'strategy' || item.key === 'levels')
-    }, [data, view])
+    const renderBullets = (items: string[]) => (
+        <ul className="space-y-1.5">
+            {items.map((item, index) => (
+                <li key={index} className="text-xs text-muted-foreground leading-snug">• {item}</li>
+            ))}
+        </ul>
+    )
 
     return (
         <div className="h-full flex flex-col gap-3">
             <Card className="border-border bg-card">
                 <CardHeader className="pb-2 pt-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <CardTitle className="text-sm">Trading Analysis</CardTitle>
+                        <CardTitle className="text-sm">Macro Desk Report</CardTitle>
                         <div className="flex flex-wrap items-center gap-1.5">
-                            <Button variant={view === 'daily' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5" onClick={() => setView('daily')}>Daily</Button>
-                            <Button variant={view === 'weekly' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5" onClick={() => setView('weekly')}>Weekly</Button>
-                            <Button variant={view === 'monthly' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5" onClick={() => setView('monthly')}>Monthly</Button>
-                            <Button variant={view === 'all' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5" onClick={() => setView('all')}>All</Button>
+                            <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                value={score}
+                                onChange={(e) => setScore(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+                                className="h-8 w-16 rounded-md border border-border bg-background px-2 text-xs"
+                                aria-label="Checklist score"
+                            />
+                            <select
+                                value={tradeIntent}
+                                onChange={(e) => setTradeIntent(e.target.value as 'buy' | 'sell' | 'none')}
+                                className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                                aria-label="Trade intent"
+                            >
+                                <option value="none">No Intent</option>
+                                <option value="buy">Buy Intent</option>
+                                <option value="sell">Sell Intent</option>
+                            </select>
                             <Button size="sm" variant="outline" className="h-8 px-2.5 gap-1" onClick={fetchMacroBrief} disabled={loading}>
                                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                                 Refresh
@@ -83,6 +118,11 @@ export function TradingAnalysisPanel() {
                     {data && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                             <Badge variant="outline" className="text-[11px]">Updated: {new Date(data.generatedAt).toLocaleString()}</Badge>
+                            <Badge variant="outline" className="text-[11px]">Gold: {data.aiDecision.goldBias}</Badge>
+                            <Badge variant="outline" className="text-[11px]">Indices: {data.aiDecision.indicesBias}</Badge>
+                            <Badge variant="outline" className="text-[11px]">Conf: {data.aiDecision.confidence}%</Badge>
+                            <Badge variant="outline" className="text-[11px]">Signal: {data.decisionEngine.signal}</Badge>
+                            <Badge variant="outline" className="text-[11px]">Status: {data.decisionEngine.status}</Badge>
                             {data.sources.map((source) => (
                                 <Badge key={source} variant="outline" className="text-[11px]">{source}</Badge>
                             ))}
@@ -96,33 +136,75 @@ export function TradingAnalysisPanel() {
                     <CardContent className="h-full flex items-center justify-center">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Building macro brief...
+                            Building macro desk report...
                         </div>
                     </CardContent>
                 </Card>
-            ) : (
+            ) : data ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {sections.map((section) => (
-                        <Card key={section.key} className="border-border bg-card">
-                            <CardHeader className="pb-1.5 pt-4">
-                                <CardTitle className="text-xs font-semibold tracking-wide flex items-center gap-1.5">
-                                    {section.icon}
-                                    {section.title}
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 pb-4">
-                                <ul className="space-y-1.5">
-                                    {section.items.map((item, index) => (
-                                        <li key={`${section.key}-${index}`} className="text-xs text-muted-foreground leading-snug">
-                                            • {item}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    ))}
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">1) Macro Overview</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.macroOverview)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">2) Market Drivers</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.marketDrivers)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">3) Cross-Asset: Gold</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.crossAsset.gold)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">3) Cross-Asset: Indices</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.crossAsset.indices)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">4) News + Sentiment</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.newsSentiment)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">5) AI Decision</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.aiDecision.reasoning)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">6) Trade Implication: Do</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.tradeImplication.whatToDo)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">6) Trade Implication: Avoid</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.tradeImplication.whatToAvoid)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">6) Confirmation Signals</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.tradeImplication.confirmationSignals)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">7) Risk Factors</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">{renderBullets(data.riskFactors)}</CardContent>
+                    </Card>
+
+                    <Card className="border-border bg-card">
+                        <CardHeader className="pb-1.5 pt-4"><CardTitle className="text-xs font-semibold tracking-wide">Advanced Edge</CardTitle></CardHeader>
+                        <CardContent className="pt-0 pb-4">
+                            {renderBullets([
+                                `Regime: ${data.advancedEdge.marketRegime}`,
+                                data.advancedEdge.conflictDetection,
+                                ...data.advancedEdge.scoreWeighting,
+                                data.advancedEdge.eventAwareness,
+                            ])}
+                        </CardContent>
+                    </Card>
                 </div>
-            )}
+            ) : null}
         </div>
     )
 }

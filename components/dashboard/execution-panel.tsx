@@ -3,7 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ChartPanel } from './chart-panel'
-import { FundamentalsPanel } from './fundamentals-panel'
 import { RiskCalculator } from './risk-calculator'
 import { AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react'
 
@@ -25,8 +24,6 @@ interface ExecutionPanelProps {
     accountBalance: number
     riskPercent: number
     onPairSelect: (pair: string) => void
-    onBiasChange: (bias: 'bullish' | 'bearish' | 'neutral') => void
-    onNotesChange: (notes: string) => void
     onTradeSubmit: (trade: TradeData) => void
 }
 
@@ -37,8 +34,6 @@ export function ExecutionPanel({
     accountBalance,
     riskPercent,
     onPairSelect,
-    onBiasChange,
-    onNotesChange,
     onTradeSubmit,
 }: ExecutionPanelProps) {
     return (
@@ -71,16 +66,9 @@ export function ExecutionPanel({
                 </CardContent>
             </Card>
 
-            <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4">
-                <div className="xl:col-span-8 min-h-[380px]">
+            <div className="flex-1 min-h-0">
+                <div className="min-h-[380px] h-full">
                     <ChartPanel onPairSelect={onPairSelect} />
-                </div>
-                <div className="xl:col-span-4 min-h-[380px]">
-                    <FundamentalsPanel
-                        pair={selectedPair}
-                        onBiasChange={onBiasChange}
-                        onNotesChange={onNotesChange}
-                    />
                 </div>
             </div>
 
