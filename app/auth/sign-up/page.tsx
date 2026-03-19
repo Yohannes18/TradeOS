@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { TrendingUp, CheckCircle } from 'lucide-react'
 import { OAuthButtons } from '@/components/auth/oauth-buttons'
 import { buildOAuthRedirectTo } from '@/lib/auth/redirect'
+import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('')
@@ -25,15 +26,6 @@ export default function SignUpPage() {
     setIsLoading(true)
     setError(null)
 
-    let supabase
-    try {
-      supabase = createClient()
-    } catch {
-      setError('Supabase is not configured. Add your Supabase environment variables and try again.')
-      setIsLoading(false)
-      return
-    }
-
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       setIsLoading(false)
@@ -42,6 +34,35 @@ export default function SignUpPage() {
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters')
+      setIsLoading(false)
+      return
+    }
+
+    if (isBetterAuthClientEnabled) {
+      const result = await betterAuthClient.signUp.email({
+        email,
+        password,
+        name: email.split('@')[0],
+        callbackURL: '/dashboard',
+      } as never)
+
+      const maybeError = (result as { error?: { message?: string } })?.error
+      if (maybeError) {
+        setError(maybeError.message || 'Unable to create account with Better Auth.')
+        setIsLoading(false)
+        return
+      }
+
+      setIsSuccess(true)
+      setIsLoading(false)
+      return
+    }
+
+    let supabase
+    try {
+      supabase = createClient()
+    } catch {
+      setError('Supabase is not configured. Add your Supabase environment variables and try again.')
       setIsLoading(false)
       return
     }
@@ -109,6 +130,11 @@ export default function SignUpPage() {
           <CardDescription className="text-muted-foreground">
             Start tracking and improving your trading
           </CardDescription>
+          {isBetterAuthClientEnabled && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Better Auth mode enabled.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <OAuthButtons onError={(message) => setError(message || null)} />

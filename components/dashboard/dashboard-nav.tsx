@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,9 +17,12 @@ import {
   Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
 
 interface DashboardNavProps {
-  user: User
+  user: {
+    email?: string | null
+  }
 }
 
 const navItems = [
@@ -39,7 +41,11 @@ export function DashboardNav({ user }: DashboardNavProps) {
   const supabase = createClient()
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    if (isBetterAuthClientEnabled) {
+      await betterAuthClient.signOut()
+    } else {
+      await supabase.auth.signOut()
+    }
     router.push('/auth/login')
     router.refresh()
   }

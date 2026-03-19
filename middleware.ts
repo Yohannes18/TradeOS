@@ -1,7 +1,21 @@
 import { updateSession } from '@/lib/supabase/middleware'
+import { updateBetterAuthSession } from '@/lib/auth/middleware'
+import { NextResponse } from 'next/server'
 import { type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/api/auth')) {
+    return NextResponse.next({ request })
+  }
+
+  if (process.env.BETTER_AUTH_ENABLED === 'true') {
+    try {
+      return await updateBetterAuthSession(request)
+    } catch {
+      return await updateSession(request)
+    }
+  }
+
   return await updateSession(request)
 }
 

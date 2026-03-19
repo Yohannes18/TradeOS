@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +45,20 @@ interface JournalPanelProps {
     initialTrades: Trade[]
 }
 
+interface ChecklistLog {
+    id: string
+    context_score: number | null
+    setup_score: number | null
+    execution_score: number | null
+    total_score: number | null
+    data?: {
+        regime?: string
+        session?: string
+        fundamentalAligned?: boolean
+        highImpactNewsNearby?: boolean
+    } | null
+}
+
 export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
     const [trades, setTrades] = useState(initialTrades)
     const [pairFilter, setPairFilter] = useState('all')
@@ -53,6 +67,8 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
     const [scoreFilter, setScoreFilter] = useState('all')
     const [mistakeFilter, setMistakeFilter] = useState('all')
     const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
+    const [selectedChecklist, setSelectedChecklist] = useState<ChecklistLog | null>(null)
+    const [isChecklistLoading, setIsChecklistLoading] = useState(false)
     const supabase = createClient()
 
     const getEffectiveScore = (trade: Trade) => trade.checklist_score ?? trade.score ?? 0
@@ -170,6 +186,36 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
                 )
         }
     }
+
+    useEffect(() => {
+        const loadChecklist = async () => {
+            if (!selectedTrade?.id) {
+                setSelectedChecklist(null)
+                return
+            }
+
+            setIsChecklistLoading(true)
+            const { data, error } = await supabase
+                .from('checklist_logs')
+                .select('id, context_score, setup_score, execution_score, total_score, data')
+                .eq('user_id', userId)
+                .eq('trade_id', selectedTrade.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+
+            if (error) {
+                setSelectedChecklist(null)
+                setIsChecklistLoading(false)
+                return
+            }
+
+            setSelectedChecklist((data as ChecklistLog | null) || null)
+            setIsChecklistLoading(false)
+        }
+
+        loadChecklist()
+    }, [selectedTrade?.id, supabase, userId])
 
     return (
         <div className="h-full grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -322,6 +368,27 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
                                         ? 'High-quality setup. Focus on repeating this structure with macro alignment.'
                                         : 'Below A-tier setup. Review timing, context alignment, and execution precision.'}
                                 </p>
+                            </div>
+
+                            <div className="rounded-md border border-border bg-secondary/20 p-2 text-xs text-muted-foreground">
+                                <p className="font-medium text-foreground mb-1">Checklist Link</p>
+                                {isChecklistLoading ? (
+                                    <p>Loading linked checklist…</p>
+                                ) : selectedChecklist ? (
+                                    <div className="space-y-1">
+                                        <p>
+                                            Scores — Context: {selectedChecklist.context_score?.toFixed(2) ?? '-'} | Setup: {selectedChecklist.setup_score?.toFixed(2) ?? '-'} | Execution: {selectedChecklist.execution_score?.toFixed(2) ?? '-'} | Total: {selectedChecklist.total_score ?? '-'}
+                                        </p>
+                                        <p>
+                                            Regime: {selectedChecklist.data?.regime || '-'} | Session: {selectedChecklist.data?.session || '-'}
+                                        </p>
+                                        <p>
+                                            Fundamental aligned: {selectedChecklist.data?.fundamentalAligned ? 'Yes' : 'No'} | High-impact news nearby: {selectedChecklist.data?.highImpactNewsNearby ? 'Yes' : 'No'}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p>No checklist log linked to this trade yet.</p>
+                                )}
                             </div>
 
                             <div className="rounded-md border border-border bg-secondary/20 p-2 text-xs text-muted-foreground">

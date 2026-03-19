@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Apple, Chrome, Loader2 } from 'lucide-react'
 import { buildOAuthRedirectTo } from '@/lib/auth/redirect'
+import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
 
 interface OAuthButtonsProps {
     nextPath?: string
@@ -19,6 +20,19 @@ export function OAuthButtons({ nextPath = '/dashboard', onError }: OAuthButtonsP
     const handleOAuthSignIn = async (provider: OAuthProvider) => {
         setLoadingProvider(provider)
         onError?.('')
+
+        if (isBetterAuthClientEnabled) {
+            const result = await betterAuthClient.signIn.social({
+                provider,
+                callbackURL: buildOAuthRedirectTo(nextPath),
+            } as never)
+
+            if ((result as { error?: { message?: string } })?.error) {
+                onError?.((result as { error?: { message?: string } }).error?.message || 'Better Auth social login failed.')
+                setLoadingProvider(null)
+            }
+            return
+        }
 
         let supabase
         try {

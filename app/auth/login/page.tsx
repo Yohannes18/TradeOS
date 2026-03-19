@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { TrendingUp } from 'lucide-react'
 import { OAuthButtons } from '@/components/auth/oauth-buttons'
 import { sanitizeNextPath } from '@/lib/auth/redirect'
+import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -30,6 +31,25 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
+
+    if (isBetterAuthClientEnabled) {
+      const result = await betterAuthClient.signIn.email({
+        email,
+        password,
+        callbackURL: nextPath,
+      } as never)
+
+      const maybeError = (result as { error?: { message?: string } })?.error
+      if (maybeError) {
+        setError(maybeError.message || 'Unable to sign in with Better Auth.')
+        setIsLoading(false)
+        return
+      }
+
+      router.push(nextPath)
+      router.refresh()
+      return
+    }
 
     let supabase
     try {
@@ -69,6 +89,11 @@ export default function LoginPage() {
           <CardDescription className="text-muted-foreground">
             Sign in to access your trading dashboard
           </CardDescription>
+          {isBetterAuthClientEnabled && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Better Auth mode enabled.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <OAuthButtons nextPath={nextPath} onError={(message) => setError(message || null)} />

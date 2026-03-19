@@ -3,14 +3,16 @@ import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, BarChart3, ShieldAlert, Target } from 'lucide-react'
+import { getAuthenticatedUser } from '@/lib/auth/server-user'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthenticatedUser()
 
   if (!user) {
     redirect('/auth/login')
   }
+
+  const supabase = await createClient()
 
   const { data: trades } = await supabase
     .from('trades')

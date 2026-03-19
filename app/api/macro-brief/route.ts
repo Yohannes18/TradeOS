@@ -76,7 +76,7 @@ const YAHOO_SYMBOLS = [
     'USDJPY=X',
 ]
 
-const MARKET_DATA_USER_AGENT = process.env.MARKET_DATA_USER_AGENT 
+const MARKET_DATA_USER_AGENT = process.env.MARKET_DATA_USER_AGENT || 'TradeOS/1.0 (+https://tradeos.app; contact@tradeos.app)'
 
 const MARKET_DATA_HEADERS: HeadersInit = {
     'User-Agent': MARKET_DATA_USER_AGENT,
@@ -106,14 +106,14 @@ function fmtNum(value?: number, decimals = 2): string {
 }
 
 function parseRssTitles(xml: string, limit = 5): string[] {
-    const titles = Array.from(xml.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/gis))
+    const titles = Array.from(xml.matchAll(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>|<title>([\s\S]*?)<\/title>/gi))
         .map((match) => (match[1] || match[2] || '').trim())
         .filter((title) => title && !title.toLowerCase().includes('rss'))
     return titles.slice(0, limit)
 }
 
 function parseForexFactoryHighImpact(xml: string): { count: number; events: string[] } {
-    const impacts = Array.from(xml.matchAll(/<impact>(.*?)<\/impact>/gis)).map((m) => (m[1] || '').trim().toLowerCase())
+    const impacts = Array.from(xml.matchAll(/<impact>([\s\S]*?)<\/impact>/gi)).map((m) => (m[1] || '').trim().toLowerCase())
     const count = impacts.filter((impact) => impact.includes('high')).length
     const events = parseRssTitles(xml, 8)
     return { count, events }

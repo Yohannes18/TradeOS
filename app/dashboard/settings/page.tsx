@@ -1,14 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SettingsContent } from '@/components/settings/settings-content'
+import { getAuthenticatedUser } from '@/lib/auth/server-user'
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthenticatedUser()
 
   if (!user) {
     redirect('/auth/login')
   }
+
+  const supabase = await createClient()
 
   // Fetch user settings
   const { data: settings } = await supabase
@@ -18,10 +20,10 @@ export default async function SettingsPage() {
     .single()
 
   return (
-    <SettingsContent 
-      userId={user.id} 
-      userEmail={user.email || ''} 
-      settings={settings || { risk_percent: 1, account_balance: 10000 }} 
+    <SettingsContent
+      userId={user.id}
+      userEmail={user.email || ''}
+      settings={settings || { risk_percent: 1, account_balance: 10000 }}
     />
   )
 }

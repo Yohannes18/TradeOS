@@ -2,14 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { normalizeSessionValue, SESSION_LABELS } from '@/lib/session'
+import { getAuthenticatedUser } from '@/lib/auth/server-user'
 
 export default async function AnalyticsPage() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthenticatedUser()
 
     if (!user) {
         redirect('/auth/login')
     }
+
+    const supabase = await createClient()
 
     const { data: trades } = await supabase
         .from('trades')

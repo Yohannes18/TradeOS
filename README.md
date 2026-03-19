@@ -38,6 +38,11 @@ Set the following variables in `.env.local`:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` (optional, recommended for local auth redirect)
 - `NEXT_PUBLIC_SITE_URL` (required for consistent OAuth callback redirects across environments)
+- `BETTER_AUTH_ENABLED` (optional, defaults to `false`; enables Phase-1 Better Auth API scaffold)
+- `BETTER_AUTH_URL` (optional for Better Auth; defaults to `NEXT_PUBLIC_SITE_URL`)
+- `BETTER_AUTH_SECRET` (optional for Better Auth; required before production use)
+- `NEXT_PUBLIC_BETTER_AUTH_ENABLED` (optional, defaults to `false`; enables Better Auth login/signup UI flow)
+- `NEXT_PUBLIC_BETTER_AUTH_URL` (optional; Better Auth client base URL)
 - `GEMINI_API_KEY` (optional, enables Gemini-powered analysis)
 - `DEEPSEEK_API_KEY` (optional, enables DeepSeek-powered analysis)
 
