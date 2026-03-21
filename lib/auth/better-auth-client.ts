@@ -1,12 +1,12 @@
 import { createAuthClient } from 'better-auth/client'
+import { emailOTPClient } from 'better-auth/client/plugins'
+import { getAuthBaseURL, isBetterAuthClientEnabled } from '@/lib/auth/config'
 
-export const isBetterAuthClientEnabled = process.env.NEXT_PUBLIC_BETTER_AUTH_ENABLED === 'true'
-
-const baseURL =
-    process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'http://localhost:3000'
+const baseURL = getAuthBaseURL()
 
 export const betterAuthClient = createAuthClient({
     baseURL,
+    plugins: [emailOTPClient()],
 })
+
+export { isBetterAuthClientEnabled }

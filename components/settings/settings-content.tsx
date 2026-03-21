@@ -8,8 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { createClient } from '@/lib/supabase/client'
-import { Settings, DollarSign, Percent, User, Shield, CheckCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Settings, DollarSign, Percent, User, Shield, CheckCircle, Mail } from 'lucide-react'
 
 interface Settings {
   id?: string
@@ -20,10 +19,11 @@ interface Settings {
 interface SettingsContentProps {
   userId: string
   userEmail: string
+  userEmailVerified: boolean | null
   settings: Settings
 }
 
-export function SettingsContent({ userId, userEmail, settings }: SettingsContentProps) {
+export function SettingsContent({ userId, userEmail, userEmailVerified, settings }: SettingsContentProps) {
   const [riskPercent, setRiskPercent] = useState(settings.risk_percent.toString())
   const [accountBalance, setAccountBalance] = useState(settings.account_balance.toString())
   const [isSaving, setIsSaving] = useState(false)
@@ -56,21 +56,24 @@ export function SettingsContent({ userId, userEmail, settings }: SettingsContent
   }
 
   return (
-    <div className="flex-1 p-4 overflow-auto">
-      <div className="max-w-2xl mx-auto flex flex-col gap-6">
+    <div className="page-wrap max-w-none overflow-auto">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+        <section className="page-hero px-6 py-6 sm:px-7">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(118,160,255,0.12),transparent_24%),radial-gradient(circle_at_22%_20%,rgba(96,228,187,0.08),transparent_18%)]" />
+          <div className="relative">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <Settings className="h-6 w-6 text-primary" />
             Settings
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage your trading preferences and account settings
+          <p className="mt-2 text-sm text-muted-foreground">
+            Manage account protection, platform preferences, and risk controls in one place.
           </p>
-        </div>
+          </div>
+        </section>
 
         {/* Account Info */}
-        <Card className="border-border bg-card">
+        <Card className="glass-panel">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-lg bg-primary/10">
@@ -91,11 +94,26 @@ export function SettingsContent({ userId, userEmail, settings }: SettingsContent
                 className="bg-secondary/50 border-border text-muted-foreground"
               />
             </Field>
+            <div className="mt-4 rounded-2xl border border-white/8 bg-white/4 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-medium text-foreground">Email access</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {userEmailVerified
+                      ? 'Your email is confirmed for account recovery.'
+                      : 'Email verification is optional in this personal workspace and is not required for sign-in.'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* Risk Management */}
-        <Card className="border-border bg-card">
+        <Card className="glass-panel">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-lg bg-loss/10">
@@ -147,7 +165,7 @@ export function SettingsContent({ userId, userEmail, settings }: SettingsContent
               </p>
             </Field>
 
-            <div className="bg-secondary/50 rounded-lg p-4 border border-border">
+            <div className="rounded-2xl border border-white/8 bg-white/4 p-4">
               <h4 className="text-sm font-medium text-foreground mb-2">Risk Summary</h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { BarChart3, Search } from 'lucide-react'
+import { BarChart3, Search, Zap, Clock3 } from 'lucide-react'
 
 const popularPairs = [
   'EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD',
@@ -152,55 +152,62 @@ export function ChartPanel({ onPairSelect }: ChartPanelProps) {
   const tradingViewSymbol = symbolMap[selectedPair] || `OANDA:${selectedPair}`
 
   return (
-    <Card className="h-full flex flex-col border-border bg-card">
+    <Card className="glass-panel interactive-panel h-full flex flex-col overflow-hidden">
       <CardHeader className="pb-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-primary" />
-              {selectedPair}
-            </CardTitle>
-            <div className="flex items-center gap-1">
-              {timeframes.slice(0, 5).map((tf) => (
-                <Button
-                  key={tf.value}
-                  variant={timeframe === tf.value ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setTimeframe(tf.value)}
-                >
-                  {tf.label}
-                </Button>
-              ))}
-              <Select value={timeframe} onValueChange={setTimeframe}>
-                <SelectTrigger className="h-7 w-16 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {timeframes.map((tf) => (
-                    <SelectItem key={tf.value} value={tf.value}>
-                      {tf.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div>
+              <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-primary" />
+                {selectedPair}
+              </CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Live chart workspace for confirmation, structure, and timing.
+              </p>
+            </div>
+            <div className="-mx-1 overflow-x-auto pb-1 touch-scroll">
+              <div className="flex min-w-max items-center gap-1 rounded-2xl border border-white/8 bg-white/4 p-1">
+                {timeframes.slice(0, 5).map((tf) => (
+                  <Button
+                    key={tf.value}
+                    variant={timeframe === tf.value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="pressable h-8 rounded-xl px-2.5 text-xs"
+                    onClick={() => setTimeframe(tf.value)}
+                  >
+                    {tf.label}
+                  </Button>
+                ))}
+                <Select value={timeframe} onValueChange={setTimeframe}>
+                  <SelectTrigger className="h-8 w-[76px] rounded-xl border-white/8 bg-white/4 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timeframes.map((tf) => (
+                      <SelectItem key={tf.value} value={tf.value}>
+                        {tf.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-          <div className="relative w-full sm:w-48">
+          <div className="relative w-full lg:w-52">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search symbol..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-sm bg-secondary border-border"
+              className="h-9 rounded-xl border-white/8 bg-white/4 pl-8 text-sm"
             />
             {searchQuery && filteredPairs.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg z-10 max-h-48 overflow-auto">
+              <div className="touch-scroll absolute top-full left-0 right-0 z-10 mt-1 max-h-48 overflow-auto rounded-2xl border border-white/8 bg-card/95 p-1 shadow-lg backdrop-blur-xl">
                 {filteredPairs.map((pair) => (
                   <button
                     key={pair}
                     onClick={() => handlePairSelect(pair)}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-secondary transition-colors"
+                    className="pressable w-full rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-white/6"
                   >
                     {pair}
                   </button>
@@ -209,9 +216,19 @@ export function ChartPanel({ onPairSelect }: ChartPanelProps) {
             )}
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/4 px-3 py-1">
+            <Zap className="h-3.5 w-3.5 text-primary" />
+            Active Symbol: {selectedPair}
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/4 px-3 py-1">
+            <Clock3 className="h-3.5 w-3.5 text-primary" />
+            Timeframe: {timeframes.find((tf) => tf.value === timeframe)?.label || timeframe}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 p-0 min-h-0">
-        <div className="h-full min-h-[300px] border-t border-border bg-secondary/20 p-2">
+        <div className="h-full min-h-[300px] border-t border-white/8 bg-black/10 p-2">
           <TradingViewWidget symbol={tradingViewSymbol} interval={timeframe} />
         </div>
       </CardContent>

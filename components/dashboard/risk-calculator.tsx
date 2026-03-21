@@ -178,32 +178,35 @@ export function RiskCalculator({
   const rrBarWidth = Math.min(100, Math.max(0, (riskReward / 3) * 100))
 
   return (
-    <Card className="border-border bg-card">
+    <Card className="glass-panel interactive-panel overflow-hidden">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
           <Calculator className="h-4 w-4 text-primary" />
           Professional Risk Engine
         </CardTitle>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Size the trade with clearer constraints, cleaner metrics, and a faster read on whether the opportunity is worth taking.
+        </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="text-xs">{INSTRUMENT_TYPE_LABEL[instrument.type]}</Badge>
+          <Badge variant="outline" className="border-white/10 bg-white/4 text-xs">{INSTRUMENT_TYPE_LABEL[instrument.type]}</Badge>
           {calculations?.direction && (
             <Badge className={cn('text-xs gap-1', isLong ? 'bg-profit/10 text-profit border-profit/20' : 'bg-loss/10 text-loss border-loss/20')}>
               {isLong ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
               {calculations.direction}
             </Badge>
           )}
-          <Badge variant="outline" className="text-xs">{instrument.symbol}</Badge>
+          <Badge variant="outline" className="border-white/10 bg-white/4 text-xs">{instrument.symbol}</Badge>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Field>
             <FieldLabel htmlFor="pair" className="text-xs">Symbol</FieldLabel>
             <Input
               id="pair"
               value={pair}
               onChange={(e) => setPair(e.target.value.toUpperCase())}
-              className="h-9 bg-secondary border-border text-sm"
+              className="h-11 rounded-xl border-white/10 bg-secondary/80 text-sm"
               list="instrument-list"
             />
             <datalist id="instrument-list">
@@ -221,7 +224,7 @@ export function RiskCalculator({
               placeholder="0.00"
               value={entry}
               onChange={(e) => setEntry(e.target.value)}
-              className="h-9 bg-secondary border-border text-sm"
+              className="h-11 rounded-xl border-white/10 bg-secondary/80 text-sm"
             />
           </Field>
           <Field>
@@ -233,7 +236,7 @@ export function RiskCalculator({
               placeholder="0.00"
               value={sl}
               onChange={(e) => setSl(e.target.value)}
-              className="h-9 bg-secondary border-border text-sm text-loss"
+              className="h-11 rounded-xl border-white/10 bg-secondary/80 text-sm text-loss"
             />
           </Field>
           <Field>
@@ -245,7 +248,7 @@ export function RiskCalculator({
               placeholder="0.00"
               value={tp}
               onChange={(e) => setTp(e.target.value)}
-              className="h-9 bg-secondary border-border text-sm text-profit"
+              className="h-11 rounded-xl border-white/10 bg-secondary/80 text-sm text-profit"
             />
           </Field>
 
@@ -253,21 +256,21 @@ export function RiskCalculator({
             <Button
               onClick={handleSubmit}
               disabled={!calculations || hasErrors}
-              className="h-9 w-full"
+              className="pressable h-11 w-full"
             >
               Log Trade
             </Button>
           </div>
           <div className="flex items-end">
-            <div className="w-full rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs">
+            <div className="w-full rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-xs">
               <p className="text-muted-foreground">Risk %</p>
               <p className="text-sm font-semibold text-foreground">{formatNumber(riskPercent, 2)}%</p>
             </div>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="bg-secondary rounded-lg p-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <ShieldAlert className="h-3.5 w-3.5" />
               Risk Amount
@@ -275,7 +278,7 @@ export function RiskCalculator({
             <p className="text-xl font-semibold text-loss">${formatNumber(calculations?.riskAmount || 0, 2)}</p>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
               Position Size
@@ -283,7 +286,7 @@ export function RiskCalculator({
             <p className="text-xl font-semibold text-foreground">{formatNumber(calculations?.positionSize || 0, 2)}</p>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5" />
               {pipLabel.toUpperCase()} Distance
@@ -293,7 +296,7 @@ export function RiskCalculator({
             </p>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Target className="h-3.5 w-3.5" />
               Potential Profit
@@ -302,8 +305,8 @@ export function RiskCalculator({
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="bg-secondary rounded-lg p-3">
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Gauge className="h-3.5 w-3.5" />
               Risk/Reward
@@ -311,29 +314,29 @@ export function RiskCalculator({
             <p className={cn('text-xl font-semibold', riskReward >= RR_WARNING ? 'text-profit' : 'text-chart-4')}>
               1:{formatNumber(riskReward, 2)}
             </p>
-            <div className="mt-2 h-2 w-full rounded-full bg-background overflow-hidden">
-              <div className="h-full bg-profit" style={{ width: `${rrBarWidth}%` }} />
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-background/80">
+              <div className="h-full bg-[linear-gradient(90deg,rgba(110,156,255,1),rgba(120,231,194,1))]" style={{ width: `${rrBarWidth}%` }} />
             </div>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground">Pip Value / Lot</p>
             <p className="text-xl font-semibold text-foreground">${formatNumber(calculations?.pipValue || 0, 2)}</p>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground">% Gain if TP Hits</p>
             <p className="text-xl font-semibold text-profit">{formatNumber(calculations?.percentGain || 0, 2)}%</p>
           </div>
 
-          <div className="bg-secondary rounded-lg p-3">
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground">Est. Margin Required</p>
             <p className="text-xl font-semibold text-foreground">${formatNumber(calculations?.marginRequired || 0, 2)}</p>
           </div>
         </div>
 
         {calculations && calculations.warnings.length > 0 && (
-          <div className="mt-3 rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          <div className="mt-3 rounded-2xl border border-white/8 bg-white/4 p-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-2 text-chart-4 mb-1">
               <AlertTriangle className="h-3.5 w-3.5" />
               Warnings
@@ -347,7 +350,7 @@ export function RiskCalculator({
         )}
 
         {calculations && calculations.errors.length > 0 && (
-          <div className="mt-3 rounded-lg border border-border bg-loss/10 p-3 text-xs text-loss">
+          <div className="mt-3 rounded-2xl border border-loss/20 bg-loss/10 p-3 text-xs text-loss">
             <div className="flex items-center gap-2 mb-1">
               <ShieldAlert className="h-3.5 w-3.5" />
               Fix Before Logging
@@ -361,7 +364,7 @@ export function RiskCalculator({
         )}
 
         {calculations && (
-          <div className="mt-4 rounded-lg border border-border bg-secondary/30 p-3 text-sm">
+          <div className="mt-4 rounded-2xl border border-white/8 bg-white/4 p-3 text-sm">
             <p className="text-foreground font-medium mb-1">Trade Preview</p>
             <p className="text-muted-foreground">
               {isLong ? 'Long' : isShort ? 'Short' : 'Flat'} {calculations.pair} | Risk: {formatNumber(calculations.pipDistance, 1)} {pipLabel} | Reward: {formatNumber(calculations.tpPipDistance, 1)} {pipLabel} | RR: 1:{formatNumber(calculations.riskReward, 2)}

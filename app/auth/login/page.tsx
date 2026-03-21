@@ -1,18 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Field, FieldLabel } from '@/components/ui/field'
-import { Spinner } from '@/components/ui/spinner'
-import { TrendingUp } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
+import { ShieldCheck } from 'lucide-react'
+
 import { OAuthButtons } from '@/components/auth/oauth-buttons'
-import { sanitizeNextPath } from '@/lib/auth/redirect'
+import { AuthShell } from '@/components/auth/auth-shell'
+import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
+import { createClient } from '@/lib/supabase/client'
 import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
+import { sanitizeNextPath } from '@/lib/auth/redirect'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -25,9 +26,11 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     setNextPath(sanitizeNextPath(params.get('next')))
+    const emailParam = params.get('email')
+    if (emailParam) setEmail(emailParam)
   }, [])
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
@@ -76,72 +79,68 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <TrendingUp className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-foreground">TradeOS</span>
-          </div>
-          <CardTitle className="text-xl text-foreground">Welcome back</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Sign in to access your trading dashboard
-          </CardDescription>
-          {isBetterAuthClientEnabled && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Better Auth mode enabled.
-            </p>
-          )}
-        </CardHeader>
-        <CardContent>
-          <OAuthButtons nextPath={nextPath} onError={(message) => setError(message || null)} />
-          <div className="my-4 flex items-center gap-2">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <Field>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
-              <Input
-                id="email"
-                type="email"
-                placeholder="trader@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-input border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="password">Password</FieldLabel>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="bg-input border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </Field>
-            {error && (
-              <p className="text-sm text-loss">{error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? <Spinner className="h-4 w-4" /> : 'Sign In'}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            {"Don't have an account? "}
-            <Link href="/auth/sign-up" className="text-primary hover:underline">
-              Sign up
+    <AuthShell
+      title="Welcome back"
+      description="Sign in to your secure trading workspace."
+      footer={
+        <p className="text-center text-sm text-muted-foreground">
+          {"Don't have an account? "}
+          <Link href="/auth/sign-up" className="text-primary hover:underline">
+            Create one
+          </Link>
+        </p>
+      }
+    >
+      <div className="rounded-xl border border-border bg-secondary/20 p-3 text-sm text-muted-foreground">
+        <p className="flex items-center gap-2 font-medium text-foreground">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          Professional-grade access flow
+        </p>
+        <p className="mt-1">
+          Stronger credential policy, safer redirects, and recovery-ready auth built around Better Auth.
+        </p>
+      </div>
+
+      <OAuthButtons nextPath={nextPath} onError={(message) => setError(message || null)} />
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">or continue with email</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      <form onSubmit={handleLogin} className="flex flex-col gap-4">
+        <Field>
+          <FieldLabel htmlFor="email">Work Email</FieldLabel>
+          <Input
+            id="email"
+            type="email"
+            placeholder="trader@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </Field>
+        <Field>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <Link href="/auth/forgot-password" className="text-xs text-primary hover:underline">
+              Forgot password?
             </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+          <Input
+            id="password"
+            type="password"
+            placeholder="Enter your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Field>
+        {error ? <p className="text-sm text-loss">{error}</p> : null}
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? <Spinner className="h-4 w-4" /> : 'Sign In'}
+        </Button>
+      </form>
+    </AuthShell>
   )
 }

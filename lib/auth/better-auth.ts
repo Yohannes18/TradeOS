@@ -1,6 +1,15 @@
 import { betterAuth } from 'better-auth'
-
-export const isBetterAuthEnabled = process.env.BETTER_AUTH_ENABLED === 'true'
+import { apple, google } from 'better-auth/social-providers'
+import { emailOTP } from 'better-auth/plugins/email-otp'
+import {
+    getAuthBaseURL,
+    getAuthSecret,
+    getTrustedAuthOrigins,
+    hasAppleOAuth,
+    hasGoogleOAuth,
+    isBetterAuthEnabled,
+} from '@/lib/auth/config'
+import { sendResetPasswordEmail, sendVerificationOtpEmail } from '@/lib/auth/email'
 
 let cachedAuth: unknown = null
 
@@ -9,19 +18,62 @@ export function getBetterAuthInstance() {
 
     if (cachedAuth) return cachedAuth as ReturnType<typeof betterAuth>
 
-    const baseURL =
-        process.env.BETTER_AUTH_URL ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        'http://localhost:3000'
-
-    const secret =
-        process.env.BETTER_AUTH_SECRET ||
-        process.env.SUPABASE_JWT_SECRET ||
-        'change-this-in-production'
+    const baseURL = getAuthBaseURL()
+    const secret = getAuthSecret()
+    const socialProviders = {
+        ...(hasGoogleOAuth
+            ? {
+                  google: google({
+                      clientId: process.env.BETTER_AUTH_GOOGLE_CLIENT_ID!,
+                      clientSecret: process.env.BETTER_AUTH_GOOGLE_CLIENT_SECRET!,
+                  }),
+              }
+            : {}),
+        ...(hasAppleOAuth
+            ? {
+                  apple: apple({
+                      clientId: process.env.BETTER_AUTH_APPLE_CLIENT_ID!,
+                      clientSecret: process.env.BETTER_AUTH_APPLE_CLIENT_SECRET!,
+                  }),
+              }
+            : {}),
+    }
 
     cachedAuth = betterAuth({
         baseURL,
         secret,
+        trustedOrigins: getTrustedAuthOrigins(),
+        socialProviders,
+        emailAndPassword: {
+            enabled: true,
+            minPasswordLength: 10,
+            maxPasswordLength: 128,
+            requireEmailVerification: false,
+            revokeSessionsOnPasswordReset: true,
+            async sendResetPassword({ user, url }) {
+                await sendResetPasswordEmail({
+                    email: user.email,
+                    name: user.name,
+                    resetUrl: url,
+                })
+            },
+        },
+        advanced: {
+            crossSubDomainCookies: {
+                enabled: false,
+            },
+        },
+        plugins: [
+            emailOTP({
+                otpLength: 6,
+                expiresIn: 300,
+                sendVerificationOnSignUp: false,
+                overrideDefaultEmailVerification: true,
+                async sendVerificationOTP({ email, otp, type }) {
+                    await sendVerificationOtpEmail({ email, otp, type })
+                },
+            }),
+        ],
     })
 
     return cachedAuth as ReturnType<typeof betterAuth>

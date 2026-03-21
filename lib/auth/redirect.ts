@@ -39,3 +39,18 @@ export function buildOAuthRedirectTo(nextPath = '/dashboard') {
 
     return `/auth/callback?next=${encodeURIComponent(safeNextPath)}`
 }
+
+export function buildAbsoluteUrl(path: string) {
+    const safePath = path.startsWith('/') ? path : `/${path}`
+    const explicitSiteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BETTER_AUTH_URL
+
+    if (explicitSiteUrl) {
+        return `${explicitSiteUrl.replace(/\/$/, '')}${safePath}`
+    }
+
+    if (typeof window !== 'undefined') {
+        return `${window.location.origin}${safePath}`
+    }
+
+    return safePath
+}

@@ -103,11 +103,22 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border pb-3">
+    <div className="page-wrap h-full overflow-hidden">
+      <section className="page-hero px-5 py-5 sm:px-6">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(118,160,255,0.14),transparent_24%),radial-gradient(circle_at_22%_25%,rgba(96,228,187,0.08),transparent_18%)]" />
+        <div className="relative">
+          <p className="text-xs uppercase tracking-[0.22em] text-primary">Trade Workspace</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Move from checklist to execution without losing context.</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+            Keep the workflow simple: validate the setup, size the trade, then review the signal with cleaner analysis.
+          </p>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-white/8 bg-white/4 p-2">
         <Button
           variant={mode === 'checklist' ? 'secondary' : 'ghost'}
-          className="gap-2"
+          className="gap-2 rounded-2xl"
           onClick={() => setMode('checklist')}
         >
           <ClipboardCheck className="h-4 w-4" />
@@ -115,7 +126,7 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
         </Button>
         <Button
           variant={mode === 'execution' ? 'secondary' : 'ghost'}
-          className="gap-2"
+          className="gap-2 rounded-2xl"
           onClick={() => setMode('execution')}
         >
           <CandlestickChart className="h-4 w-4" />
@@ -123,7 +134,7 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
         </Button>
         <Button
           variant={mode === 'analysis' ? 'secondary' : 'ghost'}
-          className="gap-2"
+          className="gap-2 rounded-2xl"
           onClick={() => setMode('analysis')}
         >
           <BrainCircuit className="h-4 w-4" />
@@ -131,7 +142,7 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
         </Button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto rounded-[28px] border border-white/8 bg-white/3 p-1">
         {mode === 'checklist' && (
           <ChecklistPanel
             userId={userId}

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sanitizeNextPath } from '@/lib/auth/redirect'
+import { isBetterAuthEnabled } from '@/lib/auth/config'
 
 export async function GET(request: NextRequest) {
+    if (isBetterAuthEnabled) {
+        return NextResponse.redirect(new URL(sanitizeNextPath(request.nextUrl.searchParams.get('next')), request.url))
+    }
+
     const code = request.nextUrl.searchParams.get('code')
     const nextPath = sanitizeNextPath(request.nextUrl.searchParams.get('next'))
 

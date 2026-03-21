@@ -24,11 +24,16 @@ export function OAuthButtons({ nextPath = '/dashboard', onError }: OAuthButtonsP
         if (isBetterAuthClientEnabled) {
             const result = await betterAuthClient.signIn.social({
                 provider,
-                callbackURL: buildOAuthRedirectTo(nextPath),
+                callbackURL: nextPath,
             } as never)
 
-            if ((result as { error?: { message?: string } })?.error) {
-                onError?.((result as { error?: { message?: string } }).error?.message || 'Better Auth social login failed.')
+            const message = (result as { error?: { message?: string } })?.error?.message
+            if (message) {
+                onError?.(
+                    message.toLowerCase().includes('provider')
+                        ? `${provider[0].toUpperCase()}${provider.slice(1)} OAuth is not configured correctly yet. Add the provider client ID/secret env vars and try again.`
+                        : message || 'Better Auth social login failed.'
+                )
                 setLoadingProvider(null)
             }
             return

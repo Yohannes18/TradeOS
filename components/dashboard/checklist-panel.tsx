@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { CheckCircle, RotateCcw } from 'lucide-react'
+import { CheckCircle, RotateCcw, ShieldCheck, Workflow, Crosshair } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -253,10 +253,13 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
   }
 
   return (
-    <Card className="h-full flex flex-col border-border bg-card">
+    <Card className="glass-panel interactive-panel h-full flex flex-col overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-semibold text-foreground">Pre-Trade Checklist</CardTitle>
+          <div>
+            <CardTitle className="text-base font-semibold text-foreground">Pre-Trade Checklist</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Score the setup with less friction and clearer visual feedback.</p>
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -268,14 +271,22 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
-        <div className="flex-1 space-y-4 overflow-auto pr-1">
-          <section className="space-y-3 rounded-lg border border-border bg-secondary/20 p-3">
-            <h3 className="text-sm font-semibold">A) Market Context (30%)</h3>
+        <div className="touch-scroll flex-1 space-y-4 overflow-auto pr-1">
+          <section className="interactive-panel space-y-3 rounded-2xl border border-white/8 bg-white/4 p-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">A) Market Context (30%)</h3>
+                <p className="text-xs text-muted-foreground">Align trend, session, and macro conditions before judging the setup.</p>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-2 rounded-2xl border border-transparent p-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-muted-foreground">HTF Trend aligned</span>
                 <Select value={input.trend} onValueChange={(v) => updateInput({ trend: v as TrendInput })}>
-                  <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10 w-full rounded-xl border-white/8 bg-white/4 sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="bullish">Bullish</SelectItem>
                     <SelectItem value="bearish">Bearish</SelectItem>
@@ -284,10 +295,10 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
                 </Select>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-2 rounded-2xl border border-transparent p-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-muted-foreground">Market regime</span>
                 <Select value={input.regime} onValueChange={(v) => updateInput({ regime: v as RegimeInput })}>
-                  <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10 w-full rounded-xl border-white/8 bg-white/4 sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="trend">Trending</SelectItem>
                     <SelectItem value="range">Range</SelectItem>
@@ -296,15 +307,15 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
                 </Select>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-transparent p-2">
                 <span className="text-xs text-muted-foreground">Fundamental bias aligned</span>
                 <Switch checked={input.fundamentalAligned} onCheckedChange={(checked) => updateInput({ fundamentalAligned: checked })} />
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-2 rounded-2xl border border-transparent p-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-muted-foreground">Session</span>
                 <Select value={input.session} onValueChange={(v) => updateInput({ session: v as SessionInput })}>
-                  <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10 w-full rounded-xl border-white/8 bg-white/4 sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SESSION_VALUES.map((session) => (
                       <SelectItem key={session} value={session}>{SESSION_LABELS[session]}</SelectItem>
@@ -313,15 +324,23 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
                 </Select>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-transparent p-2">
                 <span className="text-xs text-muted-foreground">High-impact news nearby</span>
                 <Switch checked={input.highImpactNewsNearby} onCheckedChange={(checked) => updateInput({ highImpactNewsNearby: checked })} />
               </div>
             </div>
           </section>
 
-          <section className="space-y-3 rounded-lg border border-border bg-secondary/20 p-3">
-            <h3 className="text-sm font-semibold">B) Setup Quality (40%)</h3>
+          <section className="interactive-panel space-y-3 rounded-2xl border border-white/8 bg-white/4 p-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                <Workflow className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">B) Setup Quality (40%)</h3>
+                <p className="text-xs text-muted-foreground">Measure structural quality, freshness, and institutional confluence.</p>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-3">
               {[
                 { key: 'strongZone', label: 'Strong supply/demand zone' },
@@ -330,7 +349,7 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
                 { key: 'liquidity', label: 'Liquidity sweep present' },
                 { key: 'confluence', label: 'Confluence (Fibo/structure)' },
               ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between gap-2">
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-2xl border border-transparent p-2">
                   <span className="text-xs text-muted-foreground">{item.label}</span>
                   <Switch
                     checked={Boolean(input[item.key as keyof ChecklistInput])}
@@ -355,8 +374,16 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
             </div>
           </section>
 
-          <section className="space-y-3 rounded-lg border border-border bg-secondary/20 p-3">
-            <h3 className="text-sm font-semibold">C) Execution Precision (30%)</h3>
+          <section className="interactive-panel space-y-3 rounded-2xl border border-white/8 bg-white/4 p-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                <Crosshair className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">C) Execution Precision (30%)</h3>
+                <p className="text-xs text-muted-foreground">Confirm the trigger, the timing, and whether the RR is worth the risk.</p>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-3">
               {[
                 { key: 'ltfBreak', label: 'LTF structure break confirmed' },
@@ -364,7 +391,7 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
                 { key: 'slLogical', label: 'SL placement logical' },
                 { key: 'timingCorrect', label: 'Timing correct (not chasing)' },
               ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between gap-2">
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-2xl border border-transparent p-2">
                   <span className="text-xs text-muted-foreground">{item.label}</span>
                   <Switch
                     checked={Boolean(input[item.key as keyof ChecklistInput])}
@@ -390,55 +417,57 @@ export function ChecklistPanel({ userId, onScoreChange, onDecisionChange, onCont
           </section>
         </div>
 
-        <div className="border-t border-border pt-4">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="text-sm text-muted-foreground">Setup Grade</p>
-              <div className="flex items-baseline gap-2">
-                <span className={cn('text-2xl font-bold', getScoreColor())}>{grade.replace(' Setup', '')}</span>
-                <span className="text-muted-foreground text-sm">({Math.round(weightedScore * 100)}%)</span>
+        <div className="border-t border-white/8 pt-4">
+          <div className="mb-3 rounded-2xl border border-white/8 bg-white/4 p-4">
+            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Setup Grade</p>
+                <div className="flex items-baseline gap-2">
+                  <span className={cn('text-2xl font-bold', getScoreColor())}>{grade.replace(' Setup', '')}</span>
+                  <span className="text-sm text-muted-foreground">({Math.round(weightedScore * 100)}%)</span>
+                </div>
+              </div>
+              <div className={cn('flex items-center gap-1.5 self-start rounded-full px-3 py-1.5 text-sm font-medium', {
+                'bg-profit/10 text-profit': decision === 'VALID',
+                'bg-chart-4/10 text-chart-4': decision === 'RISKY',
+                'bg-loss/10 text-loss': decision === 'NO TRADE',
+              })}>
+                <CheckCircle className="h-3.5 w-3.5" />
+                {getScoreLabel()}
               </div>
             </div>
-            <div className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium', {
-              'bg-profit/10 text-profit': decision === 'VALID',
-              'bg-chart-4/10 text-chart-4': decision === 'RISKY',
-              'bg-loss/10 text-loss': decision === 'NO TRADE',
-            })}>
-              <CheckCircle className="h-3.5 w-3.5" />
-              {getScoreLabel()}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3 text-xs">
-            <div className="rounded-md bg-secondary px-2 py-1.5">
+            <div className="mb-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+              <div className="stat-tile rounded-xl px-3 py-2">
               <span className="text-muted-foreground">Context: </span>
               <span className="font-medium">{Math.round(contextAdjusted * 100)}%</span>
-            </div>
-            <div className="rounded-md bg-secondary px-2 py-1.5">
+              </div>
+              <div className="stat-tile rounded-xl px-3 py-2">
               <span className="text-muted-foreground">Setup: </span>
               <span className="font-medium">{Math.round(setupScore * 100)}%</span>
-            </div>
-            <div className="rounded-md bg-secondary px-2 py-1.5">
+              </div>
+              <div className="stat-tile rounded-xl px-3 py-2">
               <span className="text-muted-foreground">Execution: </span>
               <span className="font-medium">{Math.round(executionScore * 100)}%</span>
+              </div>
             </div>
-          </div>
 
-          {warnings.length > 0 && (
-            <div className="mb-3 rounded-md border border-border bg-secondary/30 p-2">
-              <p className="text-xs font-medium text-foreground mb-1">Warnings</p>
-              <ul className="space-y-1">
-                {warnings.map((warning) => (
-                  <li key={warning} className="text-xs text-muted-foreground">• {warning}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            {warnings.length > 0 && (
+              <div className="mb-3 rounded-2xl border border-white/8 bg-white/4 p-3">
+                <p className="mb-1 text-xs font-medium text-foreground">Warnings</p>
+                <ul className="space-y-1">
+                  {warnings.map((warning) => (
+                    <li key={warning} className="text-xs text-muted-foreground">• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
 
           <Button
             onClick={handleSave}
             disabled={totalScore === 0 || isSaving}
-            className="w-full"
+            className="pressable w-full"
           >
             Log Checklist
           </Button>

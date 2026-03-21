@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { normalizeSessionValue, SESSION_LABELS } from '@/lib/session'
 import { getAuthenticatedUser } from '@/lib/auth/server-user'
+import { BarChart3, ArrowRight } from 'lucide-react'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 export default async function AnalyticsPage() {
     const user = await getAuthenticatedUser()
@@ -101,64 +105,123 @@ export default async function AnalyticsPage() {
     }).length
 
     const mistakeTaggedTrades = completed.filter((trade) => hasMistake(trade)).length
+    const hasCompletedTrades = completed.length > 0
 
     return (
-        <div className="flex-1 p-4 space-y-4 overflow-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-                <MetricCard title="Win Rate" value={`${winRate}%`} />
-                <MetricCard title="Expectancy" value={expectancy} />
-                <MetricCard title="Avg RR" value={`1:${avgRRValue}`} />
-                <MetricCard title="Profit Factor" value={profitFactor} />
-                <MetricCard title="Completed" value={String(completed.length)} />
-            </div>
+        <div className="page-wrap overflow-auto">
+            <section className="page-hero px-6 py-7 sm:px-8">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(108,158,255,0.14),transparent_24%),radial-gradient(circle_at_24%_20%,rgba(95,230,184,0.1),transparent_22%)]" />
+                <div className="relative">
+                    <p className="text-xs uppercase tracking-[0.22em] text-primary">Analytics</p>
+                    <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Sharper feedback for your trading behavior.</h1>
+                    <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
+                        These metrics turn journal entries into pattern recognition so you can improve quality, timing, and session selection.
+                    </p>
+                </div>
+            </section>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                <Card className="border-border bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">Win Rate by Score</CardTitle></CardHeader>
-                    <CardContent className="space-y-2 text-sm text-muted-foreground">
-                        <BarRow label="A Setups" value={scoreWinRate(byScore.a)} />
-                        <BarRow label="B Setups" value={scoreWinRate(byScore.b)} />
-                        <BarRow label="C Setups" value={scoreWinRate(byScore.c)} />
+            {hasCompletedTrades ? (
+                <>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                        <MetricCard title="Win Rate" value={`${winRate}%`} />
+                        <MetricCard title="Expectancy" value={expectancy} />
+                        <MetricCard title="Avg RR" value={`1:${avgRRValue}`} />
+                        <MetricCard title="Profit Factor" value={profitFactor} />
+                        <MetricCard title="Completed" value={String(completed.length)} />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Win Rate by Score</CardTitle>
+                                <CardDescription>Quality should beat quantity over time.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4 text-sm text-muted-foreground">
+                                <BarRow label="A Setups" value={scoreWinRate(byScore.a)} />
+                                <BarRow label="B Setups" value={scoreWinRate(byScore.b)} />
+                                <BarRow label="C Setups" value={scoreWinRate(byScore.c)} />
+                            </CardContent>
+                        </Card>
+
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Win Rate by Session</CardTitle>
+                                <CardDescription>Time-of-day edge matters more than frequency.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4 text-sm text-muted-foreground">
+                                <BarRow label={SESSION_LABELS.london} value={scoreWinRate(london)} />
+                                <BarRow label={SESSION_LABELS.ny} value={scoreWinRate(ny)} />
+                                <BarRow label={SESSION_LABELS.asia} value={scoreWinRate(asia)} />
+                            </CardContent>
+                        </Card>
+
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Mistake Analysis</CardTitle>
+                                <CardDescription>Execution leaks that deserve immediate attention.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3 text-sm text-muted-foreground">
+                                <p>Early entry losses: <span className="font-medium text-foreground">{earlyEntryLosses}</span></p>
+                                <p>Against bias losses: <span className="font-medium text-foreground">{againstBiasLosses}</span></p>
+                                <p>Mistake-tagged trades: <span className="font-medium text-foreground">{mistakeTaggedTrades}</span></p>
+                                <p>Breakeven trades: <span className="font-medium text-foreground">{breakeven}</span></p>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <Card className="glass-panel">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">AI Insights</CardTitle>
+                            <CardDescription>High-level readouts to guide your next review cycle.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 md:grid-cols-3">
+                            <InsightCard text="You perform best when score is high and context aligns with execution." />
+                            <InsightCard text="A-setups currently outperform B/C setups, so selectivity is paying off." />
+                            <InsightCard text="Loss clusters around early timing and bias conflicts point to discipline drift." />
+                        </CardContent>
+                    </Card>
+                </>
+            ) : (
+                <Card className="glass-panel">
+                    <CardContent className="p-8 sm:p-10">
+                        <Empty className="border-white/8 bg-white/3">
+                            <EmptyHeader>
+                                <EmptyMedia variant="icon" className="bg-white/6 text-primary">
+                                    <BarChart3 className="h-5 w-5" />
+                                </EmptyMedia>
+                                <EmptyTitle>Analytics will unlock after completed trades</EmptyTitle>
+                                <EmptyDescription>
+                                    Once you have a few closed trades, this page will show session edge, setup quality, expectancy, and the mistakes that need attention.
+                                </EmptyDescription>
+                            </EmptyHeader>
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                                <Link href="/dashboard/trade">
+                                    <Button className="gap-2">
+                                        Log a Trade
+                                        <ArrowRight className="h-4 w-4" />
+                                    </Button>
+                                </Link>
+                                <Link href="/dashboard/calendar">
+                                    <Button variant="outline">Open Calendar</Button>
+                                </Link>
+                            </div>
+                        </Empty>
                     </CardContent>
                 </Card>
-
-                <Card className="border-border bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">Win Rate by Session</CardTitle></CardHeader>
-                    <CardContent className="space-y-2 text-sm text-muted-foreground">
-                        <BarRow label={SESSION_LABELS.london} value={scoreWinRate(london)} />
-                        <BarRow label={SESSION_LABELS.ny} value={scoreWinRate(ny)} />
-                        <BarRow label={SESSION_LABELS.asia} value={scoreWinRate(asia)} />
-                    </CardContent>
-                </Card>
-
-                <Card className="border-border bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">Mistake Analysis</CardTitle></CardHeader>
-                    <CardContent className="space-y-2 text-sm text-muted-foreground">
-                        <p>Early entry losses: <span className="text-foreground font-medium">{earlyEntryLosses}</span></p>
-                        <p>Against bias losses: <span className="text-foreground font-medium">{againstBiasLosses}</span></p>
-                        <p>Mistake-tagged trades: <span className="text-foreground font-medium">{mistakeTaggedTrades}</span></p>
-                        <p>Breakeven trades: <span className="text-foreground font-medium">{breakeven}</span></p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <Card className="border-border bg-card">
-                <CardHeader className="pb-2"><CardTitle className="text-sm">AI Insights</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                    <p>• You perform best when score is high and context aligns with execution.</p>
-                    <p>• A-setups currently outperform B/C setups; prioritize quality over frequency.</p>
-                    <p>• Loss clusters around “early” or “against bias” notes indicate timing/discipline leak.</p>
-                </CardContent>
-            </Card>
+            )}
         </div>
     )
 }
 
 function MetricCard({ title, value }: { title: string; value: string }) {
     return (
-        <Card className="border-border bg-card">
-            <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">{value}</p></CardContent>
+        <Card className="glass-panel">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+            </CardContent>
         </Card>
     )
 }
@@ -166,13 +229,24 @@ function MetricCard({ title, value }: { title: string; value: string }) {
 function BarRow({ label, value }: { label: string; value: number }) {
     return (
         <div>
-            <div className="flex items-center justify-between text-xs mb-1">
+            <div className="mb-2 flex items-center justify-between text-xs">
                 <span>{label}</span>
                 <span className="text-foreground">{value}%</span>
             </div>
-            <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+            <div className="h-2.5 overflow-hidden rounded-full bg-secondary/80">
+                <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,rgba(112,157,255,1),rgba(123,230,198,1))]"
+                    style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+                />
             </div>
+        </div>
+    )
+}
+
+function InsightCard({ text }: { text: string }) {
+    return (
+        <div className="rounded-2xl border border-white/8 bg-white/4 p-4 text-sm leading-6 text-muted-foreground">
+            {text}
         </div>
     )
 }

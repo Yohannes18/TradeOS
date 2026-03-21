@@ -17,10 +17,10 @@ export default async function JournalPage() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(200)
 
     return (
-        <div className="flex-1 flex flex-col p-4 gap-4 overflow-auto">
+        <div className="page-wrap overflow-auto">
             <JournalPanel userId={user.id} initialTrades={trades || []} />
         </div>
     )

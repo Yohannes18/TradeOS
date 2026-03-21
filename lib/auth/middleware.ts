@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-
-const isBetterAuthEnabled = process.env.BETTER_AUTH_ENABLED === 'true'
+import { isBetterAuthEnabled } from '@/lib/auth/config'
 
 async function hasBetterAuthSession(request: NextRequest): Promise<boolean> {
     const sessionUrl = new URL('/api/auth/get-session', request.url)

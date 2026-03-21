@@ -1,5 +1,6 @@
 import { toNextJsHandler } from 'better-auth/next-js'
-import { getBetterAuthInstance, isBetterAuthEnabled } from '@/lib/auth/better-auth'
+import { getBetterAuthInstance } from '@/lib/auth/better-auth'
+import { isBetterAuthEnabled } from '@/lib/auth/config'
 
 const disabledResponse = () =>
     Response.json(

@@ -23,6 +23,7 @@ export default async function SettingsPage() {
     <SettingsContent
       userId={user.id}
       userEmail={user.email || ''}
+      userEmailVerified={user.emailVerified ?? null}
       settings={settings || { risk_percent: 1, account_balance: 10000 }}
     />
   )
