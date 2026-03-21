@@ -70,7 +70,7 @@ interface MacroDeskReport {
         status: 'ALIGNED' | 'CONFLICT' | 'NEUTRAL'
     }
     advancedEdge: {
-        marketRegime: 'trending' | 'range' | 'volatile'
+        marketRegime: 'trending' | 'range'
         conflictDetection: string
         scoreWeighting: string[]
         eventAwareness: string
@@ -92,9 +92,9 @@ type MacroSourceBundle = {
     ffEvents: string[]
     investingTitles: string[]
     myfxbookTitles: string[]
-    reutersTitles: string[]
-    bloombergTitles: string[]
-    marketWatchTitles: string[]
+    alphaVantageTitles: string[]
+    finnhubTitles: string[]
+    xTitles: string[]
     socialTitles: string[]
     investingSnapshots: Partial<Record<keyof typeof INVESTING_MARKET_ENDPOINTS, InvestingSnapshot | null>>
 }
@@ -110,7 +110,6 @@ const YAHOO_SYMBOLS = [
     '^TNX',
     '^GSPC',
     '^NDX',
-    '^VIX',
     'GC=F',
     'CL=F',
 ]
@@ -134,11 +133,7 @@ const INVESTING_MARKET_ENDPOINTS = {
     },
     nasdaq: {
         url: 'https://www.investing.com/indices/nq-100',
-        sourceLabel: 'Investing.com Nasdaq 100',
-    },
-    vix: {
-        url: 'https://www.investing.com/indices/volatility-s-p-500',
-        sourceLabel: 'Investing.com VIX',
+        sourceLabel: 'Investing.com USTEC100',
     },
     gold: {
         url: 'https://www.investing.com/commodities/gold',
@@ -153,6 +148,46 @@ const INVESTING_MARKET_ENDPOINTS = {
 const MARKET_DATA_USER_AGENT =
     process.env.MARKET_DATA_USER_AGENT ||
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
+
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY?.trim()
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY?.trim()
+const DEFAULT_X_NEWS_RSS_URLS = [
+    'https://nitter.net/search/rss?f=tweets&q=macro%20markets%20stocks',
+    'https://nitter.net/search/rss?f=tweets&q=stock%20market%20news',
+]
+const X_NEWS_RSS_URLS = (process.env.X_NEWS_RSS_URL || DEFAULT_X_NEWS_RSS_URLS.join(','))
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+function parseNonNegativeEnvNumber(rawValue: string | undefined, fallback: number): number {
+    const parsed = Number(rawValue)
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback
+    return parsed
+}
+
+const CONFIDENCE_WEIGHTS = (() => {
+    const defaults = {
+        checklist: 0.5,
+        macro: 0.3,
+        indexMomentum: 0.2,
+    }
+
+    const raw = {
+        checklist: parseNonNegativeEnvNumber(process.env.MACRO_CONFIDENCE_CHECKLIST_WEIGHT, defaults.checklist),
+        macro: parseNonNegativeEnvNumber(process.env.MACRO_CONFIDENCE_MACRO_WEIGHT, defaults.macro),
+        indexMomentum: parseNonNegativeEnvNumber(process.env.MACRO_CONFIDENCE_INDEX_WEIGHT, defaults.indexMomentum),
+    }
+
+    const total = raw.checklist + raw.macro + raw.indexMomentum
+    if (total <= 0) return defaults
+
+    return {
+        checklist: raw.checklist / total,
+        macro: raw.macro / total,
+        indexMomentum: raw.indexMomentum / total,
+    }
+})()
 
 const BROWSER_NAV_HEADERS: HeadersInit = {
     'User-Agent': MARKET_DATA_USER_AGENT,
@@ -257,6 +292,89 @@ function parseHtmlTitles(html: string, limit = 8): string[] {
     return Array.from(new Set(titles)).slice(0, limit)
 }
 
+function uniqueNonEmptyTitles(titles: string[], limit = 8): string[] {
+    return Array.from(new Set(titles.map((title) => title.trim()).filter((title) => title.length > 12))).slice(0, limit)
+}
+
+async function fetchAlphaVantageNews(limit = 8): Promise<{ titles: string[]; health: SourceHealth }> {
+    const label = 'Alpha Vantage News'
+    if (!ALPHA_VANTAGE_API_KEY) {
+        return { titles: [], health: { label, status: 'error' } }
+    }
+
+    try {
+        const endpoint =
+            `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=financial_markets` +
+            `&sort=LATEST&limit=${encodeURIComponent(String(limit))}&apikey=${encodeURIComponent(ALPHA_VANTAGE_API_KEY)}`
+
+        const response = await fetchWithTimeout(
+            endpoint,
+            {
+                headers: {
+                    Accept: 'application/json,text/plain,*/*',
+                    'User-Agent': MARKET_DATA_USER_AGENT,
+                },
+            },
+            12000,
+        )
+
+        if (!response.ok) {
+            return { titles: [], health: { label, status: 'error' } }
+        }
+
+        const payload = await response.json()
+        const rawTitles = Array.isArray(payload?.feed)
+            ? payload.feed.map((item: { title?: unknown }) => (typeof item?.title === 'string' ? item.title : ''))
+            : []
+
+        const titles = uniqueNonEmptyTitles(rawTitles, limit)
+        return {
+            titles,
+            health: { label, status: titles.length > 0 ? 'ok' : 'empty' },
+        }
+    } catch {
+        return { titles: [], health: { label, status: 'error' } }
+    }
+}
+
+async function fetchFinnhubNews(limit = 8): Promise<{ titles: string[]; health: SourceHealth }> {
+    const label = 'Finnhub News'
+    if (!FINNHUB_API_KEY) {
+        return { titles: [], health: { label, status: 'error' } }
+    }
+
+    try {
+        const endpoint = `https://finnhub.io/api/v1/news?category=general&token=${encodeURIComponent(FINNHUB_API_KEY)}`
+        const response = await fetchWithTimeout(
+            endpoint,
+            {
+                headers: {
+                    Accept: 'application/json,text/plain,*/*',
+                    'User-Agent': MARKET_DATA_USER_AGENT,
+                },
+            },
+            12000,
+        )
+
+        if (!response.ok) {
+            return { titles: [], health: { label, status: 'error' } }
+        }
+
+        const payload = await response.json()
+        const rawTitles = Array.isArray(payload)
+            ? payload.map((item: { headline?: unknown }) => (typeof item?.headline === 'string' ? item.headline : ''))
+            : []
+
+        const titles = uniqueNonEmptyTitles(rawTitles, limit)
+        return {
+            titles,
+            health: { label, status: titles.length > 0 ? 'ok' : 'empty' },
+        }
+    } catch {
+        return { titles: [], health: { label, status: 'error' } }
+    }
+}
+
 function looksBlockedHtml(html: string): boolean {
     const normalized = html.toLowerCase()
     return (
@@ -302,17 +420,13 @@ async function fetchHeadlineSource(
                 headers = headersWithReferer(RSS_HEADERS, 'https://www.myfxbook.com/', 'https://www.myfxbook.com')
             } else if (url.includes('reddit.com')) {
                 headers = headersWithReferer(RSS_HEADERS, 'https://www.reddit.com/', 'https://www.reddit.com')
-            } else if (url.includes('marketwatch.com')) {
-                headers = headersWithReferer(RSS_HEADERS, 'https://www.marketwatch.com/', 'https://www.marketwatch.com')
             } else if (url.includes('investing.com')) {
                 headers = headersWithReferer(RSS_HEADERS, 'https://www.investing.com/', 'https://www.investing.com')
+            } else if (url.includes('x.com') || url.includes('twitter.com') || url.includes('nitter.net') || url.includes('rsshub.app')) {
+                headers = headersWithReferer(RSS_HEADERS, 'https://x.com/', 'https://x.com')
             } else {
                 headers = RSS_HEADERS
             }
-        } else if (url.includes('reuters.com')) {
-            headers = headersWithReferer(BROWSER_NAV_HEADERS, 'https://www.google.com/', 'https://www.reuters.com')
-        } else if (url.includes('bloomberg.com')) {
-            headers = headersWithReferer(BROWSER_NAV_HEADERS, 'https://www.google.com/', 'https://www.bloomberg.com')
         } else {
             headers = BROWSER_NAV_HEADERS
         }
@@ -334,6 +448,29 @@ async function fetchHeadlineSource(
         }
     } catch {
         return { titles: [], health: { label, status: 'error' } }
+    }
+}
+
+async function fetchXFeedHeadlines(limit = 6): Promise<{ titles: string[]; health: SourceHealth }> {
+    let sawBlocked = false
+    let sawError = false
+
+    for (const url of X_NEWS_RSS_URLS) {
+        const result = await fetchHeadlineSource('X Feed', url, 'rss', limit)
+        if (result.titles.length > 0) {
+            return result
+        }
+
+        if (result.health.status === 'blocked') sawBlocked = true
+        if (result.health.status === 'error') sawError = true
+    }
+
+    return {
+        titles: [],
+        health: {
+            label: 'X Feed',
+            status: sawBlocked ? 'blocked' : sawError ? 'error' : 'empty',
+        },
     }
 }
 
@@ -460,10 +597,35 @@ function getFundamentalBias(data: MarketData): 'bullish_gold' | 'bearish_gold' |
     return 'neutral'
 }
 
-function detectMarketRegime(vixValue: number, dxyTrend: Trend, us10yTrend: Trend): 'trending' | 'range' | 'volatile' {
-    if (vixValue >= 20) return 'volatile'
+function detectMarketRegime(dxyTrend: Trend, us10yTrend: Trend): 'trending' | 'range' {
     if (dxyTrend !== 'range' && us10yTrend !== 'range' && dxyTrend === us10yTrend) return 'trending'
     return 'range'
+}
+
+function getIndexMomentum(sp500Quote: Quote, nasdaqQuote: Quote): {
+    weightedChange: number
+    dispersion: number
+    strength: number
+    bias: Bias
+} {
+    const sp500Change = sp500Quote.regularMarketChangePercent || 0
+    const nasdaqChange = nasdaqQuote.regularMarketChangePercent || 0
+
+    const weightedChange = sp500Change * 0.45 + nasdaqChange * 0.55
+    const dispersion = Math.abs(sp500Change - nasdaqChange)
+
+    const strength = clamp(Math.abs(weightedChange) * 18 - dispersion * 4, 0, 100)
+
+    let bias: Bias = 'Neutral'
+    if (weightedChange >= 0.2) bias = 'Bullish'
+    if (weightedChange <= -0.2) bias = 'Bearish'
+
+    return {
+        weightedChange,
+        dispersion,
+        strength,
+        bias,
+    }
 }
 
 function generateSignal(score: number, bias: Bias) {
@@ -509,7 +671,7 @@ INPUT DATA:
 - US2Y Yield: ${data.us2y.value} (${data.us2y.trend})
 - Gold Price: ${data.gold_price}
 - S&P500: ${data.sp500}
-- Nasdaq (USTEC100): ${data.nasdaq}
+- USTEC100: ${data.nasdaq}
 - News Headlines: ${data.news.join(' | ') || 'none'}
 - Economic Events: ${data.economic_events.join(' | ') || 'none'}
 - Social Sentiment: ${data.social_sentiment}
@@ -596,7 +758,8 @@ function buildReport(input: {
     data: MarketData
     dxyQuote: Quote
     us10yQuote: Quote
-    vixQuote: Quote
+    sp500Quote: Quote
+    nasdaqQuote: Quote
     oilQuote: Quote
     ffHighImpactCount: number
     checklistScore: number
@@ -607,7 +770,8 @@ function buildReport(input: {
         data,
         dxyQuote,
         us10yQuote,
-        vixQuote,
+        sp500Quote,
+        nasdaqQuote,
         oilQuote,
         ffHighImpactCount,
         checklistScore,
@@ -619,12 +783,22 @@ function buildReport(input: {
     const inferredGoldBias: Bias =
         fundamentalBias === 'bullish_gold' ? 'Bullish' : fundamentalBias === 'bearish_gold' ? 'Bearish' : 'Neutral'
 
-    const inferredIndicesBias: Bias =
+    const macroIndicesBias: Bias =
         data.us10y.trend === 'up' && data.dxy.trend === 'up'
             ? 'Bearish'
             : data.us10y.trend === 'down' && data.dxy.trend === 'down'
                 ? 'Bullish'
                 : 'Neutral'
+
+    const indexMomentum = getIndexMomentum(sp500Quote, nasdaqQuote)
+    const inferredIndicesBias: Bias =
+        macroIndicesBias === indexMomentum.bias
+            ? macroIndicesBias
+            : macroIndicesBias === 'Neutral'
+                ? indexMomentum.bias
+                : indexMomentum.bias === 'Neutral'
+                    ? macroIndicesBias
+                    : 'Neutral'
 
     const fundamentalStrength = clamp(
         (Math.abs(dxyQuote.regularMarketChangePercent || 0) +
@@ -635,11 +809,20 @@ function buildReport(input: {
         100,
     )
 
+    const checklistStrength = checklistScore * 10
     const confidence = clamp(
-        Math.round(checklistScore * 0.6 * 10 + fundamentalStrength * 0.4),
+        Math.round(
+            checklistStrength * CONFIDENCE_WEIGHTS.checklist +
+            fundamentalStrength * CONFIDENCE_WEIGHTS.macro +
+            indexMomentum.strength * CONFIDENCE_WEIGHTS.indexMomentum,
+        ),
         0,
         100,
     )
+
+    const checklistWeightPct = Math.round(CONFIDENCE_WEIGHTS.checklist * 100)
+    const macroWeightPct = Math.round(CONFIDENCE_WEIGHTS.macro * 100)
+    const indexWeightPct = Math.round(CONFIDENCE_WEIGHTS.indexMomentum * 100)
 
     const goldBias = llmResult?.goldBias || inferredGoldBias
     const indicesBias = llmResult?.indicesBias || inferredIndicesBias
@@ -648,14 +831,15 @@ function buildReport(input: {
             ? llmResult.reasoning
             : [
                 `DXY is ${data.dxy.trend} and US10Y is ${data.us10y.trend}, shaping USD and discount-rate pressure.`,
+                `Index momentum: S&P500 ${fmtPct(sp500Quote.regularMarketChangePercent)} / USTEC100 ${fmtPct(nasdaqQuote.regularMarketChangePercent)} with ${fmtPct(indexMomentum.weightedChange)} blended move.`,
                 `Oil ${fmtPct(oilQuote.regularMarketChangePercent)} signals ${oilQuote.regularMarketChangePercent && oilQuote.regularMarketChangePercent > 0 ? 'rising' : 'easing'} inflation pressure.`,
-                `Risk regime is ${data.social_sentiment} with VIX at ${fmtNum(vixQuote.regularMarketPrice, 2)}.`,
+                `Risk regime is ${data.social_sentiment}, used as a secondary confirmation layer.`,
                 `Economic calendar carries ${ffHighImpactCount} high-impact events this week.`,
             ].slice(0, 5)
 
     const signalCore = generateSignal(checklistScore, goldBias)
     const conflict = detectConflict(checklistScore, goldBias, intendedTrade)
-    const regime = detectMarketRegime(vixQuote.regularMarketPrice || 0, data.dxy.trend, data.us10y.trend)
+    const regime = detectMarketRegime(data.dxy.trend, data.us10y.trend)
 
     const monetaryPolicy =
         data.us10y.trend === 'up' && data.us2y.trend === 'up'
@@ -685,6 +869,7 @@ function buildReport(input: {
         marketDrivers: [
             `DXY: ${fmtNum(data.dxy.value, 2)} (${data.dxy.trend}).`,
             `US10Y: ${fmtNum(data.us10y.value, 3)} (${data.us10y.trend}) | US2Y: ${fmtNum(data.us2y.value, 3)} (${data.us2y.trend}).`,
+            `S&P500 ${fmtPct(sp500Quote.regularMarketChangePercent)} | USTEC100 ${fmtPct(nasdaqQuote.regularMarketChangePercent)} (dispersion ${fmtPct(indexMomentum.dispersion)}).`,
             `Oil: ${fmtNum(data.oil_price, 2)} (${fmtPct(oilQuote.regularMarketChangePercent)}) drives inflation expectations.`,
             `Risk sentiment: ${data.social_sentiment.toUpperCase()} (${regime} regime).`,
         ],
@@ -696,13 +881,13 @@ function buildReport(input: {
             ],
             indices: [
                 `Indices bias: ${indicesBias}.`,
-                `S&P500 ${fmtNum(data.sp500, 2)} / Nasdaq ${fmtNum(data.nasdaq, 2)} with ${data.us10y.trend} yields imply ${indicesBias === 'Bearish' ? 'valuation pressure' : 'breathing room'}.`,
+                `S&P500 ${fmtNum(data.sp500, 2)} / USTEC100 ${fmtNum(data.nasdaq, 2)} with ${data.us10y.trend} yields imply ${indicesBias === 'Bearish' ? 'valuation pressure' : 'breathing room'}.`,
                 'Earnings and rate expectations remain key directional filters.',
             ],
         },
         newsSentiment: [
             `High-impact events (ForexFactory): ${ffHighImpactCount}.`,
-            `Institutional tone (Reuters/MarketWatch): ${data.news.slice(0, 2).join(' | ') || 'No fresh headlines.'}`,
+            `Institutional tone (Alpha Vantage/Finnhub/X): ${data.news.slice(0, 2).join(' | ') || 'No fresh headlines.'}`,
             `Social sentiment (Reddit proxy): ${data.social_sentiment}. Use as confirmation only.`,
         ],
         aiDecision: {
@@ -743,8 +928,8 @@ function buildReport(input: {
                 ? 'Conflict detected: setup intent opposes macro + score logic.'
                 : 'No conflict detected between score, bias, and intended direction.',
             scoreWeighting: [
-                'Confidence = (checklistScore * 0.6) + (fundamentalStrength * 0.4).',
-                'High volatility regime reduces expected RR and position size.',
+                `Confidence = (checklistScore * ${checklistWeightPct}%) + (macro fundamentals * ${macroWeightPct}%) + (S&P500/USTEC100 momentum * ${indexWeightPct}%).`,
+                'Index dispersion between S&P500 and USTEC100 lowers index momentum strength.',
                 'Strong DXY regime reduces gold long conviction.',
             ],
             eventAwareness: ffHighImpactCount > 0
@@ -774,7 +959,17 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             [keyof typeof INVESTING_MARKET_ENDPOINTS, (typeof INVESTING_MARKET_ENDPOINTS)[keyof typeof INVESTING_MARKET_ENDPOINTS]]
         >
 
-        const [quoteRes, ffRes, investingRes, myfxbookRes, reutersRes, bloombergRes, marketWatchRes, redditRes, investingMarketResults] = await Promise.allSettled([
+        const [
+            quoteRes,
+            ffRes,
+            investingRes,
+            myfxbookRes,
+            alphaVantageRes,
+            finnhubRes,
+            xRes,
+            redditRes,
+            investingMarketResults,
+        ] = await Promise.allSettled([
             fetchWithTimeout(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(YAHOO_SYMBOLS.join(','))}`, {
                 headers: headersWithReferer(
                     {
@@ -792,9 +987,9 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
                 headers: headersWithReferer(RSS_HEADERS, 'https://www.investing.com/', 'https://www.investing.com'),
             }),
             fetchHeadlineSource('Myfxbook', 'https://www.myfxbook.com/rss/forex-economic-calendar-events', 'rss', 8),
-            fetchHeadlineSource('Reuters', 'https://www.reuters.com/markets/', 'html', 8),
-            fetchHeadlineSource('Bloomberg', 'https://www.bloomberg.com/markets', 'html', 8),
-            fetchHeadlineSource('MarketWatch', 'https://feeds.marketwatch.com/marketwatch/topstories/', 'rss', 6),
+            fetchAlphaVantageNews(8),
+            fetchFinnhubNews(8),
+            fetchXFeedHeadlines(6),
             fetchHeadlineSource('Reddit', 'https://www.reddit.com/r/investing/.rss', 'rss', 5),
             Promise.all(
                 investingEntries.map(async ([key, config]) => [key, await fetchInvestingSnapshot(config.url, config.sourceLabel)] as const),
@@ -806,9 +1001,9 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         let ffEvents: string[] = []
         let investingTitles: string[] = []
         let myfxbookTitles: string[] = []
-        let reutersTitles: string[] = []
-        let bloombergTitles: string[] = []
-        let marketWatchTitles: string[] = []
+        let alphaVantageTitles: string[] = []
+        let finnhubTitles: string[] = []
+        let xTitles: string[] = []
         let socialTitles: string[] = []
 
         if (quoteRes.status === 'fulfilled' && quoteRes.value.ok) {
@@ -845,27 +1040,27 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             }
         }
 
-        if (reutersRes.status === 'fulfilled') {
-            reutersTitles = reutersRes.value.titles
-            sourceHealth.push(reutersRes.value.health)
-            if (reutersTitles.length > 0) {
-                sources.add('Reuters')
+        if (alphaVantageRes.status === 'fulfilled') {
+            alphaVantageTitles = alphaVantageRes.value.titles
+            sourceHealth.push(alphaVantageRes.value.health)
+            if (alphaVantageTitles.length > 0) {
+                sources.add('Alpha Vantage')
             }
         }
 
-        if (bloombergRes.status === 'fulfilled') {
-            bloombergTitles = bloombergRes.value.titles
-            sourceHealth.push(bloombergRes.value.health)
-            if (bloombergTitles.length > 0) {
-                sources.add('Bloomberg')
+        if (finnhubRes.status === 'fulfilled') {
+            finnhubTitles = finnhubRes.value.titles
+            sourceHealth.push(finnhubRes.value.health)
+            if (finnhubTitles.length > 0) {
+                sources.add('Finnhub')
             }
         }
 
-        if (marketWatchRes.status === 'fulfilled') {
-            marketWatchTitles = marketWatchRes.value.titles
-            sourceHealth.push(marketWatchRes.value.health)
-            if (marketWatchTitles.length > 0) {
-                sources.add('MarketWatch')
+        if (xRes.status === 'fulfilled') {
+            xTitles = xRes.value.titles
+            sourceHealth.push(xRes.value.health)
+            if (xTitles.length > 0) {
+                sources.add('X Feed')
             }
         }
 
@@ -897,9 +1092,9 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             ffEvents,
             investingTitles,
             myfxbookTitles,
-            reutersTitles,
-            bloombergTitles,
-            marketWatchTitles,
+            alphaVantageTitles,
+            finnhubTitles,
+            xTitles,
             socialTitles,
             investingSnapshots,
         }
@@ -926,9 +1121,9 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         ffEvents,
         investingTitles,
         myfxbookTitles,
-        reutersTitles,
-        bloombergTitles,
-        marketWatchTitles,
+        alphaVantageTitles,
+        finnhubTitles,
+        xTitles,
         socialTitles,
         investingSnapshots,
     } = sourceBundle
@@ -939,7 +1134,6 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
     const spx = safeQuote(quotes, '^GSPC')
     const ndx = safeQuote(quotes, '^NDX')
     const oil = safeQuote(quotes, 'CL=F')
-    const vix = safeQuote(quotes, '^VIX')
 
     const dxySnapshot = investingSnapshots.dxy
     const us10ySnapshot = investingSnapshots.us10y
@@ -948,15 +1142,14 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
     const sp500Snapshot = investingSnapshots.sp500
     const nasdaqSnapshot = investingSnapshots.nasdaq
     const oilSnapshot = investingSnapshots.oil
-    const vixSnapshot = investingSnapshots.vix
 
     const relevantHeadlines = selectRelevantHeadlines(
         [
             ...investingTitles,
             ...myfxbookTitles,
-            ...reutersTitles,
-            ...bloombergTitles,
-            ...marketWatchTitles,
+            ...alphaVantageTitles,
+            ...finnhubTitles,
+            ...xTitles,
         ],
         10,
     )
@@ -999,10 +1192,15 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         regularMarketPrice: oilSnapshot?.value ?? oil.regularMarketPrice,
         regularMarketChangePercent: oilSnapshot?.changePercent ?? oil.regularMarketChangePercent,
     }
-    const vixForReport: Quote = {
-        ...vix,
-        regularMarketPrice: vixSnapshot?.value ?? vix.regularMarketPrice,
-        regularMarketChangePercent: vixSnapshot?.changePercent ?? vix.regularMarketChangePercent,
+    const sp500ForReport: Quote = {
+        ...spx,
+        regularMarketPrice: sp500Snapshot?.value ?? spx.regularMarketPrice,
+        regularMarketChangePercent: sp500Snapshot?.changePercent ?? spx.regularMarketChangePercent,
+    }
+    const nasdaqForReport: Quote = {
+        ...ndx,
+        regularMarketPrice: nasdaqSnapshot?.value ?? ndx.regularMarketPrice,
+        regularMarketChangePercent: nasdaqSnapshot?.changePercent ?? ndx.regularMarketChangePercent,
     }
 
     const llmResult = await runLLMReasoning(marketData)
@@ -1010,7 +1208,8 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         data: marketData,
         dxyQuote: dxyForReport,
         us10yQuote: us10yForReport,
-        vixQuote: vixForReport,
+        sp500Quote: sp500ForReport,
+        nasdaqQuote: nasdaqForReport,
         oilQuote: oilForReport,
         ffHighImpactCount,
         checklistScore,

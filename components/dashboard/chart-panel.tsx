@@ -100,13 +100,6 @@ const TradingViewWidget = memo(function TradingViewWidget({
           position: 'SameScale',
         },
       ],
-      studies: [
-        'STD;Accumulation_Distribution',
-        'STD;Trading%1Sessions',
-        'STD;Historical_Volatility',
-        'STD;Price%1Target',
-        'STD;Price_Momentum_Oscillator',
-      ],
       autosize: true,
     })
 

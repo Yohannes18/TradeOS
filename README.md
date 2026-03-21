@@ -45,6 +45,14 @@ Set the following variables in `.env.local`:
 - `NEXT_PUBLIC_BETTER_AUTH_URL` (optional; Better Auth client base URL)
 - `GEMINI_API_KEY` (optional, enables Gemini-powered analysis)
 - `DEEPSEEK_API_KEY` (optional, enables DeepSeek-powered analysis)
+- `ALPHA_VANTAGE_API_KEY` (optional, enables Alpha Vantage market news ingestion for macro brief)
+- `FINNHUB_API_KEY` (optional, enables Finnhub market news ingestion for macro brief)
+- `X_NEWS_RSS_URL` (optional; supports comma-separated RSS URLs and defaults to market-query X/Twitter feeds via Nitter)
+- `MACRO_CONFIDENCE_CHECKLIST_WEIGHT` (optional, default `0.5`)
+- `MACRO_CONFIDENCE_MACRO_WEIGHT` (optional, default `0.3`)
+- `MACRO_CONFIDENCE_INDEX_WEIGHT` (optional, default `0.2`)
+
+Confidence weights are auto-normalized at runtime, so they do not need to sum to `1.0`.
 
 If AI keys are not set, TradeOS will still run automated analysis using its built-in heuristic engine.
 
