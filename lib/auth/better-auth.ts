@@ -1,5 +1,4 @@
 import { betterAuth } from 'better-auth'
-import { apple, google } from 'better-auth/social-providers'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import {
     getAuthBaseURL,
@@ -23,18 +22,18 @@ export function getBetterAuthInstance() {
     const socialProviders = {
         ...(hasGoogleOAuth
             ? {
-                  google: google({
+                  google: {
                       clientId: process.env.BETTER_AUTH_GOOGLE_CLIENT_ID!,
                       clientSecret: process.env.BETTER_AUTH_GOOGLE_CLIENT_SECRET!,
-                  }),
+                  },
               }
             : {}),
         ...(hasAppleOAuth
             ? {
-                  apple: apple({
+                  apple: {
                       clientId: process.env.BETTER_AUTH_APPLE_CLIENT_ID!,
                       clientSecret: process.env.BETTER_AUTH_APPLE_CLIENT_SECRET!,
-                  }),
+                  },
               }
             : {}),
     }

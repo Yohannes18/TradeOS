@@ -1,18 +1,24 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Badge } from '@/components/ui/badge'
-import { Calculator, DollarSign, Gauge, ShieldAlert, Target, TrendingUp, ArrowUpRight, ArrowDownRight, AlertTriangle } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Calculator, DollarSign, Gauge, ShieldAlert, Target, TrendingUp, ArrowUpRight, ArrowDownRight, AlertTriangle, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { resolveInstrument, INSTRUMENT_LIST, type InstrumentConfig } from '@/lib/trading/instruments'
+import type { ChecklistStatus } from '@/lib/trading/types'
 
 interface RiskCalculatorProps {
   accountBalance?: number
   riskPercent?: number
+  checklistStatus?: ChecklistStatus
+  pair?: string
+  onPairChange?: (pair: string) => void
+  onRiskRewardChange?: (riskReward: number) => void
   onTradeSubmit?: (trade: TradeData) => void
 }
 
@@ -52,12 +58,23 @@ const formatNumber = (value: number, decimals: number) => {
 export function RiskCalculator({
   accountBalance = 10000,
   riskPercent = 1,
+  checklistStatus = 'STANDBY',
+  pair: controlledPair,
+  onPairChange,
+  onRiskRewardChange,
   onTradeSubmit
 }: RiskCalculatorProps) {
-  const [pair, setPair] = useState('XAUUSD')
+  const [internalPair, setInternalPair] = useState('XAUUSD')
   const [entry, setEntry] = useState('')
   const [sl, setSl] = useState('')
   const [tp, setTp] = useState('')
+
+  const pair = controlledPair || internalPair
+
+  const setPair = (nextPair: string) => {
+    if (!controlledPair) setInternalPair(nextPair)
+    onPairChange?.(nextPair)
+  }
 
   const instrument = useMemo(() => resolveInstrument(pair), [pair])
 
@@ -151,12 +168,17 @@ export function RiskCalculator({
       quality,
       errors,
       warnings,
+      blocked: checklistStatus !== 'AUTHORIZED',
     }
-  }, [entry, sl, tp, accountBalance, riskPercent, pair, instrument])
+  }, [entry, sl, tp, accountBalance, riskPercent, pair, instrument, checklistStatus])
+
+  useEffect(() => {
+    onRiskRewardChange?.(calculations?.riskReward || 0)
+  }, [calculations?.riskReward, onRiskRewardChange])
 
   const handleSubmit = () => {
     if (calculations && onTradeSubmit) {
-      if (calculations.errors.length > 0) return
+      if (calculations.errors.length > 0 || calculations.blocked) return
       onTradeSubmit({
         pair: calculations.pair,
         entry: calculations.entry,
@@ -176,6 +198,8 @@ export function RiskCalculator({
   const pipLabel = instrument.type === 'forex' ? 'pips' : 'points'
   const riskReward = calculations?.riskReward || 0
   const rrBarWidth = Math.min(100, Math.max(0, (riskReward / 3) * 100))
+  const riskBarWidth = Math.min(100, Math.max(0, riskPercent * 10))
+  const isBlocked = checklistStatus !== 'AUTHORIZED'
 
   return (
     <Card className="glass-panel interactive-panel overflow-hidden">
@@ -196,24 +220,25 @@ export function RiskCalculator({
             </Badge>
           )}
           <Badge variant="outline" className="border-white/10 bg-white/4 text-xs">{instrument.symbol}</Badge>
+          <Badge className={cn('text-xs', isBlocked ? 'bg-loss/15 text-loss' : 'bg-profit/15 text-profit')}>
+            {isBlocked ? 'Checklist Not Authorized' : 'Checklist Authorized'}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Field>
             <FieldLabel htmlFor="pair" className="text-xs">Symbol</FieldLabel>
-            <Input
-              id="pair"
-              value={pair}
-              onChange={(e) => setPair(e.target.value.toUpperCase())}
-              className="h-11 rounded-xl border-white/10 bg-secondary/80 text-sm"
-              list="instrument-list"
-            />
-            <datalist id="instrument-list">
+            <Select value={pair} onValueChange={setPair}>
+              <SelectTrigger id="pair" className="h-11 w-full rounded-xl border-white/10 bg-secondary/80 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-card/95">
               {INSTRUMENT_LIST.map((item) => (
-                <option key={item.symbol} value={item.symbol} />
+                <SelectItem key={item.symbol} value={item.symbol}>{item.symbol}</SelectItem>
               ))}
-            </datalist>
+              </SelectContent>
+            </Select>
           </Field>
           <Field>
             <FieldLabel htmlFor="entry" className="text-xs">Entry Price</FieldLabel>
@@ -255,10 +280,10 @@ export function RiskCalculator({
           <div className="flex items-end">
             <Button
               onClick={handleSubmit}
-              disabled={!calculations || hasErrors}
+              disabled={!calculations || hasErrors || isBlocked}
               className="pressable h-11 w-full"
             >
-              Log Trade
+              {isBlocked ? 'Blocked by Checklist' : 'Log Trade'}
             </Button>
           </div>
           <div className="flex items-end">
@@ -320,6 +345,14 @@ export function RiskCalculator({
           </div>
 
           <div className="stat-tile">
+            <p className="text-xs text-muted-foreground">Risk % Bar</p>
+            <p className="text-xl font-semibold text-foreground">{formatNumber(riskPercent, 2)}%</p>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-background/80">
+              <div className="h-full bg-[linear-gradient(90deg,rgba(239,68,68,0.9),rgba(244,114,182,0.85))]" style={{ width: `${riskBarWidth}%` }} />
+            </div>
+          </div>
+
+          <div className="stat-tile">
             <p className="text-xs text-muted-foreground">Pip Value / Lot</p>
             <p className="text-xl font-semibold text-foreground">${formatNumber(calculations?.pipValue || 0, 2)}</p>
           </div>
@@ -360,6 +393,16 @@ export function RiskCalculator({
                 <li key={error}>• {error}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {isBlocked && (
+          <div className="mt-3 rounded-2xl border border-loss/20 bg-loss/10 p-3 text-xs text-loss">
+            <div className="mb-1 flex items-center gap-2">
+              <Lock className="h-3.5 w-3.5" />
+              Authorization Required
+            </div>
+            <p>Trade submission is blocked until checklist status is AUTHORIZED.</p>
           </div>
         )}
 

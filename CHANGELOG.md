@@ -1,28 +1,39 @@
-# Changelog
+# TradeOS Changelog
 
-## 0.2.0 - 2026-03-22
+## v0.3.0 — Production Upgrade (2026-03-26)
 
-### Added
-- Alpha Vantage and Finnhub market-news ingestion for macro brief analysis.
-- X feed ingestion with multi-URL RSS fallback support.
-- Environment-based confidence tuning for macro scoring:
-  - `MACRO_CONFIDENCE_CHECKLIST_WEIGHT`
-  - `MACRO_CONFIDENCE_MACRO_WEIGHT`
-  - `MACRO_CONFIDENCE_INDEX_WEIGHT`
+### New Features
+- **AI Trade Analysis** — Real Claude API integration (`/api/ai-analysis`). Analyzes checklist + symbol and returns bias, confidence, verdict, key levels, risk note, and improvement tip. Auto-triggers when checklist score changes, with manual refresh button.
+- **Live Macro Desk** — Yahoo Finance market data for DXY, Gold, SPX, NAS100, EURUSD, GBPUSD, Oil, US10Y. Auto-refreshes every 60s. Click tiles to expand bias + TradingView deep links. Sentiment gauge + macro context table.
+- **Trade Result Dialog** — Log win/loss/breakeven with actual R:R, session, emotional state chips, mistake tags, and post-trade notes. P&L auto-calculated.
+- **Community Hub** — Anonymized leaderboard ranked by win rate × avg R:R. Curated strategy playbooks. Platform insights and stats.
+- **Analytics Charts** — Recharts equity curve, monthly P&L bar chart, result distribution donut, win rate by symbol, setup grade performance bars.
+- **Quick Add Trade** — Modal in topbar for fast trade logging without leaving the dashboard.
+- **CSV Export** — One-click journal export from the trade table.
+- **Settings Upgrade** — Risk presets, default pair selector, timezone, notifications toggle, live risk preview calculator.
 
-### Changed
-- Macro index scope narrowed to `S&P500` and `USTEC100`.
-- Macro confidence now blends checklist, macro fundamentals, and index momentum with normalized weights.
-- Source diagnostics and report language updated to reflect active providers.
-- `.env.example` and `README.md` updated with new market-data and tuning variables.
+### Improvements
+- Trade journal table: sortable columns, result filter, stats bar (win rate / net P/L / avg R:R), detail side panel
+- Dashboard layout passes account settings to topbar for quick-add
+- Trade workspace: instrument selector, AI verdict status banner, wires AI output into Supabase insert
+- AI Analysis Panel: confidence bar, key levels chips, risk/improvement cards, auto-debounced on checklist changes
 
-### Removed
-- Reuters and Bloomberg direct scraping dependencies in macro brief pipeline.
-- MarketWatch source from the macro brief source list.
-- VIX usage from macro engine logic and reported source list.
-- Duplicate compiled dashboard route files:
-  - `app/dashboard/page.js`
-  - `app/dashboard/analytics/page.js`
+### Database (run scripts/006_production_upgrade.sql)
+- Added `session`, `emotions`, `tags`, `screenshot_url`, `exit_time` columns to `trades`
+- New `ai_insights` table with RLS
+- New `settings` columns: `default_pair`, `timezone`, `theme`, `notifications_enabled`, `ai_model`
+- Performance indices on trades, daily_summary, ai_insights
+- `trade_date` backfill for existing trades
+- `daily_summary` backfill trigger for all existing trades
 
-### Notes
-- Existing local API keys should be rotated if they were ever exposed in screenshots or logs.
+## v0.2.0 — Pro Shell (2026-03-21)
+- Professional dashboard with metrics, calendar, checklist score
+- TradingView chart integration
+- Risk calculator with multi-instrument support
+- Better Auth + Supabase authentication
+- Daily summary table + trigger
+
+## v0.1.0 — Initial Release (2026-03-18)
+- Base platform scaffold with Next.js 16, Tailwind v4, shadcn/ui
+- Supabase auth and basic trades/settings tables
+- Trade journal, pre-trade checklist, analytics pages

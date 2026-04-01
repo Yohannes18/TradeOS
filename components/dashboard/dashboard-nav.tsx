@@ -26,6 +26,9 @@ import {
   Users,
   Sparkles,
   Menu,
+  PanelLeft,
+  PanelRight,
+  Globe,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { betterAuthClient, isBetterAuthClientEnabled } from '@/lib/auth/better-auth-client'
@@ -36,13 +39,21 @@ interface DashboardNavProps {
   }
 }
 
-const navItems = [
+interface NavItem {
+  href: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  disabled?: boolean
+}
+
+const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/trade', label: 'Trade', icon: CandlestickChart },
   { href: '/dashboard/journal', label: 'Journal', icon: BookOpen },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/calendar', label: 'Calendar', icon: CalendarDays },
-  { href: '/dashboard/community', label: 'Community', icon: Users, disabled: true },
+  { href: '/dashboard/macro-desk', label: 'Macro Desk', icon: Globe },
+  { href: '/dashboard/community', label: 'Community', icon: Users },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -51,6 +62,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
   const router = useRouter()
   const supabase = createClient()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleSignOut = async () => {
     if (isBetterAuthClientEnabled) {
@@ -63,11 +75,12 @@ export function DashboardNav({ user }: DashboardNavProps) {
     router.refresh()
   }
 
-  const renderNavItems = (onNavigate?: () => void) =>
+  const renderNavItems = (onNavigate?: () => void, compact = false) =>
     navItems.map((item) => {
       const isActive = pathname === item.href
       const itemClass = cn(
         'nav-link',
+        compact && 'justify-center px-2',
         isActive && 'nav-link-active',
         item.disabled && 'pointer-events-none opacity-50',
       )
@@ -84,7 +97,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
       return (
         <Link key={item.href} href={item.href} className={itemClass} onClick={onNavigate}>
           <item.icon className="h-4 w-4" />
-          <span className="pl-2">{item.label}</span>
+          {!compact && <span className="pl-2">{item.label}</span>}
         </Link>
       )
     })
@@ -162,18 +175,29 @@ export function DashboardNav({ user }: DashboardNavProps) {
         </div>
       </div>
 
-      <aside className="hidden min-h-screen w-72 flex-col border-r border-white/8 bg-sidebar/70 px-4 py-5 backdrop-blur-2xl md:flex">
+      <aside className={cn('sticky top-0 hidden h-screen flex-col border-r border-white/8 bg-sidebar/70 px-3 py-5 backdrop-blur-2xl md:flex', collapsed ? 'w-24' : 'w-72')}>
+        <div className="mb-3 flex justify-end">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setCollapsed((prev) => !prev)}
+          >
+            {collapsed ? <PanelRight className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+          </Button>
+        </div>
         <div className="rounded-[28px] border border-white/8 bg-white/4 p-4 shadow-[0_24px_60px_rgba(4,10,26,0.34)]">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary shadow-[0_14px_30px_rgba(90,135,255,0.34)]">
               <TrendingUp className="h-5 w-5 text-primary-foreground" />
             </div>
-            <div>
+            <div className={cn(collapsed && 'hidden')}>
               <p className="text-lg font-semibold tracking-tight text-foreground">TradeOS</p>
               <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Trader Workspace</p>
             </div>
           </Link>
-          <div className="mt-4 rounded-2xl border border-white/8 bg-black/10 p-3">
+          <div className={cn('mt-4 rounded-2xl border border-white/8 bg-black/10 p-3', collapsed && 'hidden')}>
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-primary">
               <Sparkles className="h-3.5 w-3.5" />
               Focus Mode
@@ -185,22 +209,22 @@ export function DashboardNav({ user }: DashboardNavProps) {
         </div>
 
         <nav className="mt-5 flex-1 space-y-1 rounded-[28px] border border-white/8 bg-white/3 p-3">
-          {renderNavItems()}
+          {renderNavItems(undefined, collapsed)}
         </nav>
 
-        <div className="mt-5 rounded-[28px] border border-white/8 bg-white/4 p-3 shadow-[0_18px_40px_rgba(4,10,26,0.22)]">
+        <div className={cn('mt-5 rounded-[28px] border border-white/8 bg-white/4 p-3 shadow-[0_18px_40px_rgba(4,10,26,0.22)]', collapsed && 'p-2')}>
           <div className="flex items-center gap-3 rounded-2xl bg-black/10 px-3 py-3 text-sm text-muted-foreground">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/6">
               <UserIcon className="h-4 w-4" />
             </div>
-            <div className="min-w-0">
+            <div className={cn('min-w-0', collapsed && 'hidden')}>
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Signed in</p>
               <span className="block truncate text-sm text-foreground">{user.email}</span>
             </div>
           </div>
-          <Button variant="ghost" onClick={handleSignOut} className="mt-2 w-full justify-start gap-2 text-loss hover:bg-loss/10 hover:text-loss">
+          <Button variant="ghost" onClick={handleSignOut} className={cn('mt-2 w-full justify-start gap-2 text-loss hover:bg-loss/10 hover:text-loss', collapsed && 'justify-center')}>
             <LogOut className="h-4 w-4" />
-            Sign Out
+            {!collapsed && 'Sign Out'}
           </Button>
         </div>
       </aside>

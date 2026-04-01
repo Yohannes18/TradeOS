@@ -1,203 +1,280 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { createClient } from '@/lib/supabase/client'
-import { Settings, DollarSign, Percent, User, Shield, CheckCircle, Mail } from 'lucide-react'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+import {
+    Settings, DollarSign, Percent, User, Shield, CheckCircle,
+    Globe, Bell, ChartCandlestick, Palette
+} from 'lucide-react'
 
-interface Settings {
-  id?: string
-  risk_percent: number
-  account_balance: number
+interface UserSettings {
+    id?: string
+    risk_percent: number
+    account_balance: number
+    default_pair?: string
+    timezone?: string
+    notifications_enabled?: boolean
+    theme?: string
 }
 
 interface SettingsContentProps {
-  userId: string
-  userEmail: string
-  userEmailVerified: boolean | null
-  settings: Settings
+    userId: string
+    userEmail: string
+    userEmailVerified: boolean | null
+    settings: UserSettings
 }
 
+const PAIRS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'USTEC100', 'US500', 'USOIL', 'BTCUSD']
+const TIMEZONES = ['UTC', 'America/New_York', 'America/Chicago', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney']
+const RISK_PRESETS = [0.5, 1, 1.5, 2, 2.5]
+
 export function SettingsContent({ userId, userEmail, userEmailVerified, settings }: SettingsContentProps) {
-  const [riskPercent, setRiskPercent] = useState(settings.risk_percent.toString())
-  const [accountBalance, setAccountBalance] = useState(settings.account_balance.toString())
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
+    const [riskPercent, setRiskPercent] = useState(settings.risk_percent.toString())
+    const [accountBalance, setAccountBalance] = useState(settings.account_balance.toString())
+    const [defaultPair, setDefaultPair] = useState(settings.default_pair || 'XAUUSD')
+    const [timezone, setTimezone] = useState(settings.timezone || 'UTC')
+    const [notifications, setNotifications] = useState(settings.notifications_enabled ?? true)
+    const [isSaving, setIsSaving] = useState(false)
+    const supabase = createClient()
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    setSaveSuccess(false)
+    const handleSave = async () => {
+        setIsSaving(true)
+        const rp = parseFloat(riskPercent) || 1
+        const ab = parseFloat(accountBalance) || 10000
 
-    const { error } = await supabase
-      .from('settings')
-      .upsert({
-        user_id: userId,
-        risk_percent: parseFloat(riskPercent) || 1,
-        account_balance: parseFloat(accountBalance) || 10000,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id',
-      })
+        if (rp < 0.1 || rp > 10) {
+            toast.error('Risk % must be between 0.1 and 10')
+            setIsSaving(false)
+            return
+        }
 
-    setIsSaving(false)
-    
-    if (!error) {
-      setSaveSuccess(true)
-      router.refresh()
-      setTimeout(() => setSaveSuccess(false), 3000)
+        const { error } = await supabase
+            .from('settings')
+            .upsert({
+                user_id: userId,
+                risk_percent: rp,
+                account_balance: ab,
+                default_pair: defaultPair,
+                timezone,
+                notifications_enabled: notifications,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' })
+
+        setIsSaving(false)
+        if (error) {
+            toast.error('Failed to save: ' + error.message)
+        } else {
+            toast.success('Settings saved')
+        }
     }
-  }
 
-  return (
-    <div className="page-wrap max-w-none overflow-auto">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-        {/* Header */}
-        <section className="page-hero px-6 py-6 sm:px-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(118,160,255,0.12),transparent_24%),radial-gradient(circle_at_22%_20%,rgba(96,228,187,0.08),transparent_18%)]" />
-          <div className="relative">
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <Settings className="h-6 w-6 text-primary" />
-            Settings
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Manage account protection, platform preferences, and risk controls in one place.
-          </p>
-          </div>
-        </section>
-
-        {/* Account Info */}
-        <Card className="glass-panel">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <User className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Account</CardTitle>
-                <CardDescription>Your account information</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Field>
-              <FieldLabel>Email</FieldLabel>
-              <Input
-                value={userEmail}
-                disabled
-                className="bg-secondary/50 border-border text-muted-foreground"
-              />
-            </Field>
-            <div className="mt-4 rounded-2xl border border-white/8 bg-white/4 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium text-foreground">Email access</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {userEmailVerified
-                      ? 'Your email is confirmed for account recovery.'
-                      : 'Email verification is optional in this personal workspace and is not required for sign-in.'}
-                  </p>
+    return (
+        <div className="page-wrap overflow-auto pb-20">
+            <header className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+                        <Settings className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Settings</p>
+                        <h1 className="text-xl font-semibold tracking-tight">Account & Preferences</h1>
+                    </div>
                 </div>
-              </div>
+            </header>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+                {/* Risk Management */}
+                <Card className="glass-panel">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-2">
+                            <Shield className="h-4 w-4 text-primary" />
+                            <CardTitle className="text-base">Risk Management</CardTitle>
+                        </div>
+                        <CardDescription>Core parameters used by the risk calculator on every trade.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="balance">Account Balance ($)</Label>
+                            <div className="relative">
+                                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    id="balance"
+                                    type="number"
+                                    min="100"
+                                    step="100"
+                                    value={accountBalance}
+                                    onChange={e => setAccountBalance(e.target.value)}
+                                    className="border-white/10 bg-white/5 pl-9"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="risk">Risk Per Trade (%)</Label>
+                            <div className="relative">
+                                <Percent className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    id="risk"
+                                    type="number"
+                                    min="0.1"
+                                    max="10"
+                                    step="0.1"
+                                    value={riskPercent}
+                                    onChange={e => setRiskPercent(e.target.value)}
+                                    className="border-white/10 bg-white/5 pl-9"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                {RISK_PRESETS.map(p => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setRiskPercent(p.toString())}
+                                        className={cn(
+                                            'rounded-lg border px-2.5 py-1 text-xs transition-all',
+                                            parseFloat(riskPercent) === p
+                                                ? 'border-primary/60 bg-primary/15 text-primary'
+                                                : 'border-white/10 bg-white/4 text-muted-foreground hover:bg-white/8'
+                                        )}
+                                    >
+                                        {p}%
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Live preview */}
+                        <div className="rounded-xl border border-white/8 bg-white/3 p-3">
+                            <p className="text-xs text-muted-foreground">Risk per trade preview</p>
+                            <p className="mt-1 text-lg font-semibold text-profit">
+                                ${((parseFloat(accountBalance) || 0) * (parseFloat(riskPercent) || 0) / 100).toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                on a ${Number(accountBalance).toLocaleString()} account at {riskPercent}% risk
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Trading Preferences */}
+                <Card className="glass-panel">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-2">
+                            <ChartCandlestick className="h-4 w-4 text-primary" />
+                            <CardTitle className="text-base">Trading Preferences</CardTitle>
+                        </div>
+                        <CardDescription>Defaults applied when opening the trade workspace.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Default Instrument</Label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {PAIRS.map(p => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setDefaultPair(p)}
+                                        className={cn(
+                                            'rounded-lg border px-2.5 py-1.5 text-xs transition-all',
+                                            defaultPair === p
+                                                ? 'border-primary/60 bg-primary/15 text-primary'
+                                                : 'border-white/10 bg-white/4 text-muted-foreground hover:bg-white/8'
+                                        )}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="timezone">Timezone</Label>
+                            <div className="relative">
+                                <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <select
+                                    id="timezone"
+                                    value={timezone}
+                                    onChange={e => setTimezone(e.target.value)}
+                                    className="h-10 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-4 text-sm text-foreground"
+                                >
+                                    {TIMEZONES.map(tz => (
+                                        <option key={tz} value={tz}>{tz}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Account */}
+                <Card className="glass-panel">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-primary" />
+                            <CardTitle className="text-base">Account</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div className="rounded-xl border border-white/8 bg-white/4 p-3">
+                            <p className="text-xs text-muted-foreground">Email</p>
+                            <div className="mt-1 flex items-center gap-2">
+                                <p className="text-sm font-medium">{userEmail}</p>
+                                {userEmailVerified && (
+                                    <CheckCircle className="h-3.5 w-3.5 text-profit" />
+                                )}
+                            </div>
+                        </div>
+                        <div className="rounded-xl border border-white/8 bg-white/4 p-3">
+                            <p className="text-xs text-muted-foreground">Member since</p>
+                            <p className="mt-1 text-sm font-medium">TradeOS Pro</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Notifications */}
+                <Card className="glass-panel">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-2">
+                            <Bell className="h-4 w-4 text-primary" />
+                            <CardTitle className="text-base">Notifications</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <button
+                            onClick={() => setNotifications(n => !n)}
+                            className={cn(
+                                'flex w-full items-center justify-between rounded-xl border p-3 transition-all',
+                                notifications ? 'border-profit/30 bg-profit/8' : 'border-white/10 bg-white/4'
+                            )}
+                        >
+                            <div className="text-left">
+                                <p className="text-sm font-medium">Enable notifications</p>
+                                <p className="text-xs text-muted-foreground">Trade reminders and macro alerts</p>
+                            </div>
+                            <div className={cn(
+                                'h-5 w-9 rounded-full transition-all',
+                                notifications ? 'bg-profit' : 'bg-white/20'
+                            )}>
+                                <div className={cn(
+                                    'mt-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                                    notifications ? 'translate-x-4' : 'translate-x-0.5'
+                                )} />
+                            </div>
+                        </button>
+                    </CardContent>
+                </Card>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Risk Management */}
-        <Card className="glass-panel">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-loss/10">
-                <Shield className="h-4 w-4 text-loss" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Risk Management</CardTitle>
-                <CardDescription>Configure your risk parameters</CardDescription>
-              </div>
+            <div className="flex justify-end">
+                <Button onClick={handleSave} disabled={isSaving} className="min-w-32 gap-2">
+                    {isSaving ? <><Spinner className="h-4 w-4" /> Saving…</> : 'Save Settings'}
+                </Button>
             </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Field>
-              <FieldLabel htmlFor="accountBalance" className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                Account Balance
-              </FieldLabel>
-              <Input
-                id="accountBalance"
-                type="number"
-                step="0.01"
-                min="0"
-                value={accountBalance}
-                onChange={(e) => setAccountBalance(e.target.value)}
-                className="bg-secondary border-border text-foreground"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Your current trading account balance
-              </p>
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="riskPercent" className="flex items-center gap-1.5">
-                <Percent className="h-3.5 w-3.5 text-muted-foreground" />
-                Risk Per Trade (%)
-              </FieldLabel>
-              <Input
-                id="riskPercent"
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="10"
-                value={riskPercent}
-                onChange={(e) => setRiskPercent(e.target.value)}
-                className="bg-secondary border-border text-foreground"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Maximum percentage of account to risk on a single trade (recommended: 1-2%)
-              </p>
-            </Field>
-
-            <div className="rounded-2xl border border-white/8 bg-white/4 p-4">
-              <h4 className="text-sm font-medium text-foreground mb-2">Risk Summary</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Max Risk Amount</p>
-                  <p className="text-xl font-bold text-loss">
-                    ${((parseFloat(accountBalance) || 0) * ((parseFloat(riskPercent) || 0) / 100)).toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Trades to Blow Account</p>
-                  <p className="text-xl font-bold text-foreground">
-                    {parseFloat(riskPercent) > 0 ? Math.ceil(100 / parseFloat(riskPercent)) : '-'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Save Button */}
-        <div className="flex items-center justify-end gap-3">
-          {saveSuccess && (
-            <span className="flex items-center gap-1.5 text-sm text-profit">
-              <CheckCircle className="h-4 w-4" />
-              Settings saved
-            </span>
-          )}
-          <Button onClick={handleSave} disabled={isSaving} className="min-w-32">
-            {isSaving ? <Spinner className="h-4 w-4" /> : 'Save Changes'}
-          </Button>
         </div>
-      </div>
-    </div>
-  )
+    )
 }

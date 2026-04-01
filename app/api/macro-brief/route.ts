@@ -1240,7 +1240,7 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
     }
 }
 
-async function getMacroReport(checklistScore: number, intendedTrade?: string | null): Promise<MacroDeskReport> {
+export async function getMacroReport(checklistScore: number, intendedTrade?: string | null): Promise<MacroDeskReport> {
     const cacheKey = reportCacheKey(checklistScore, intendedTrade)
     const cached = reportCache.get(cacheKey)
     if (cached && isCacheValid(cached.expiresAt)) {

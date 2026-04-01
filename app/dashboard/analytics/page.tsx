@@ -7,6 +7,7 @@ import { getAuthenticatedUser } from '@/lib/auth/server-user'
 import { BarChart3, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { AnalyticsCharts } from '@/components/dashboard/analytics-charts'
 
 export default async function AnalyticsPage() {
     const user = await getAuthenticatedUser()
@@ -107,6 +108,67 @@ export default async function AnalyticsPage() {
     const mistakeTaggedTrades = completed.filter((trade) => hasMistake(trade)).length
     const hasCompletedTrades = completed.length > 0
 
+    const streaks = completed.reduce(
+        (acc, trade) => {
+            const result = trade.result as string
+            if (result === 'win') {
+                acc.currentWin += 1
+                acc.currentLoss = 0
+                acc.maxWin = Math.max(acc.maxWin, acc.currentWin)
+            } else if (result === 'loss') {
+                acc.currentLoss += 1
+                acc.currentWin = 0
+                acc.maxLoss = Math.max(acc.maxLoss, acc.currentLoss)
+            }
+            return acc
+        },
+        { currentWin: 0, currentLoss: 0, maxWin: 0, maxLoss: 0 },
+    )
+
+    const highestProfitTrade = completed.reduce((best, trade) => {
+        const pl = trade.result === 'win' ? Number(trade.risk_amount || 0) * Number(trade.rr || 0) : 0
+        if (!best || pl > best.pl) return { pair: String(trade.pair), pl }
+        return best
+    }, null as { pair: string; pl: number } | null)
+
+    const largestLossTrade = completed.reduce((worst, trade) => {
+        const pl = trade.result === 'loss' ? -Number(trade.risk_amount || 0) : 0
+        if (!worst || pl < worst.pl) return { pair: String(trade.pair), pl }
+        return worst
+    }, null as { pair: string; pl: number } | null)
+
+    const performanceByDay = Object.entries(
+        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
+            const key = new Date(String(trade.created_at)).toLocaleDateString('en-US', { weekday: 'short' })
+            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
+            acc[key].total += 1
+            if (trade.result === 'win') acc[key].wins += 1
+            return acc
+        }, {}),
+    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
+
+    const performanceByMonth = Object.entries(
+        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
+            const date = new Date(String(trade.created_at))
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
+            acc[key].total += 1
+            if (trade.result === 'win') acc[key].wins += 1
+            return acc
+        }, {}),
+    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
+
+    const performanceByQuarter = Object.entries(
+        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
+            const date = new Date(String(trade.created_at))
+            const key = `Q${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`
+            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
+            acc[key].total += 1
+            if (trade.result === 'win') acc[key].wins += 1
+            return acc
+        }, {}),
+    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
+
     return (
         <div className="page-wrap overflow-auto">
             <section className="page-hero px-6 py-7 sm:px-8">
@@ -122,12 +184,39 @@ export default async function AnalyticsPage() {
 
             {hasCompletedTrades ? (
                 <>
+                    <AnalyticsCharts
+                        trades={list.map(t => ({
+                            created_at: t.created_at,
+                            result: t.result,
+                            rr: typeof t.rr === 'number' ? t.rr : null,
+                            pl: t.result === 'win' ? (t.risk_amount || 0) * (t.rr || 1) : t.result === 'loss' ? -(t.risk_amount || 0) : 0,
+                            setup_grade: (t.setup_grade as string | null) || null,
+                            session: (t.session as string | null) || null,
+                            pair: t.pair,
+                            checklist_score: getEffectiveScore(t),
+                        }))}
+                        winRate={winRate}
+                        avgRRValue={avgRRValue}
+                        expectancy={expectancy}
+                        profitFactor={profitFactor}
+                        wins={wins}
+                        losses={losses}
+                        breakeven={breakeven}
+                        byScore={byScore}
+                    />
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                         <MetricCard title="Win Rate" value={`${winRate}%`} />
                         <MetricCard title="Expectancy" value={expectancy} />
                         <MetricCard title="Avg RR" value={`1:${avgRRValue}`} />
                         <MetricCard title="Profit Factor" value={profitFactor} />
                         <MetricCard title="Completed" value={String(completed.length)} />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <MetricCard title="Win Streak" value={String(streaks.maxWin)} />
+                        <MetricCard title="Losing Streak" value={String(streaks.maxLoss)} />
+                        <MetricCard title="Highest Profit Trade" value={highestProfitTrade ? `${highestProfitTrade.pair} ${highestProfitTrade.pl.toFixed(2)}` : 'N/A'} />
+                        <MetricCard title="Largest Loss Trade" value={largestLossTrade ? `${largestLossTrade.pair} ${largestLossTrade.pl.toFixed(2)}` : 'N/A'} />
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -180,6 +269,39 @@ export default async function AnalyticsPage() {
                             <InsightCard text="Loss clusters around early timing and bias conflicts point to discipline drift." />
                         </CardContent>
                     </Card>
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Performance by Day</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-sm">
+                                {performanceByDay.map((item) => (
+                                    <p key={item.period} className="text-muted-foreground">{item.period}: <span className="text-foreground">{item.winRate}% win rate · {item.total} trades</span></p>
+                                ))}
+                            </CardContent>
+                        </Card>
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Performance by Month</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-sm">
+                                {performanceByMonth.slice(-6).map((item) => (
+                                    <p key={item.period} className="text-muted-foreground">{item.period}: <span className="text-foreground">{item.winRate}% win rate · {item.total} trades</span></p>
+                                ))}
+                            </CardContent>
+                        </Card>
+                        <Card className="glass-panel">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm">Performance by Quarter</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-sm">
+                                {performanceByQuarter.map((item) => (
+                                    <p key={item.period} className="text-muted-foreground">{item.period}: <span className="text-foreground">{item.winRate}% win rate · {item.total} trades</span></p>
+                                ))}
+                            </CardContent>
+                        </Card>
+                    </div>
                 </>
             ) : (
                 <Card className="glass-panel">
