@@ -24,7 +24,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle, XCircle, MinusCircle, PenLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 interface TradeResultDialogProps {
@@ -59,8 +58,6 @@ export function TradeResultDialog({
     const [selectedMistakes, setSelectedMistakes] = useState<string[]>([])
     const [isPending, startTransition] = useTransition()
 
-    const supabase = createClient()
-
     const toggleMistake = (m: string) =>
         setSelectedMistakes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])
 
@@ -70,26 +67,57 @@ export function TradeResultDialog({
             ? -(Number(riskAmount) || 0)
             : 0
 
+    const emotionMap: Record<string, string> = {
+        Confident: 'confident',
+        Disciplined: 'disciplined',
+        Nervous: 'anxious',
+        FOMO: 'impatient',
+        Revenge: 'revenge',
+        Patient: 'calm',
+        Rushed: 'impatient',
+        Calm: 'calm',
+    }
+
+    const mistakeMap: Record<string, string> = {
+        'Moved SL': 'moved_stop',
+        'Early Entry': 'late_entry',
+        'No Checklist': 'ignored_plan',
+        'Against Bias': 'ignored_plan',
+        'Over-leveraged': 'overrisked',
+        'Chased Price': 'fomo',
+        'Ignored News': 'news_trade',
+    }
+
     const handleSubmit = () => {
         if (!result) return toast.error('Please select a result')
         startTransition(async () => {
-            const { error } = await supabase
-                .from('trades')
-                .update({
-                    result,
-                    rr: Number(rrActual) || null,
-                    notes: notes || null,
-                    session: session || null,
-                    mistake: selectedMistakes.length > 0 ? selectedMistakes : null,
-                    emotions: emotion || null,
-                })
-                .eq('id', tradeId)
+            const response = await fetch('/api/journal', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    execution_id: tradeId,
+                    emotions: emotion ? [emotionMap[emotion] || 'calm'] : ['calm'],
+                    mistakes: selectedMistakes.map((item) => mistakeMap[item]).filter(Boolean),
+                    adherence_score: Math.max(0, Math.min(1, (result === 'win' ? 1 : result === 'breakeven' ? 0.85 : 0.7) - selectedMistakes.length * 0.05)),
+                    notes: [
+                        notes || '',
+                        `Result: ${result.toUpperCase()}`,
+                        session ? `Session: ${session}` : '',
+                        rrActual ? `Actual RR: ${rrActual}` : '',
+                    ].filter(Boolean).join('\n'),
+                }),
+            })
 
-            if (error) {
-                toast.error('Failed to update trade')
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null)
+                toast.error(payload?.error || 'Failed to save journal entry')
                 return
             }
-            toast.success(`Trade logged as ${result.toUpperCase()}`)
+
+            toast.success(`Journal entry saved for ${pair}`)
             setOpen(false)
             onUpdated?.()
         })
