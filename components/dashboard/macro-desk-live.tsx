@@ -48,18 +48,6 @@ interface MacroBriefReport {
     }
 }
 
-const FALLBACK_DATA: MarketTile[] = [
-    { symbol: 'DXY', label: 'US Dollar Index', price: '104.21', change: '+0.18', changePct: '+0.17%', direction: 'up', bias: 'Bullish momentum, Fed hold narrative', category: 'fx', tvSymbol: 'TVC:DXY' },
-    { symbol: 'XAUUSD', label: 'Gold', price: '2,184', change: '+12', changePct: '+0.55%', direction: 'up', bias: 'Safe-haven demand, real yield compression', category: 'metal', tvSymbol: 'OANDA:XAUUSD' },
-    { symbol: 'US10Y', label: 'US 10Y Yield', price: '4.31%', change: '+0.05', changePct: '+1.17%', direction: 'up', bias: 'Issuance pressure, higher-for-longer', category: 'bond', tvSymbol: 'TVC:US10Y' },
-    { symbol: 'SPX', label: 'S&P 500', price: '5,227', change: '+21', changePct: '+0.40%', direction: 'up', bias: 'Mega-cap earnings support, cautious breadth', category: 'index', tvSymbol: 'OANDA:SPX500USD' },
-    { symbol: 'NAS100', label: 'Nasdaq 100', price: '18,194', change: '+98', changePct: '+0.54%', direction: 'up', bias: 'Tech momentum intact, AI tailwind', category: 'index', tvSymbol: 'OANDA:NAS100USD' },
-    { symbol: 'EURUSD', label: 'EUR/USD', price: '1.0842', change: '-0.0014', changePct: '-0.13%', direction: 'down', bias: 'ECB dovish tilt, USD strength', category: 'fx', tvSymbol: 'OANDA:EURUSD' },
-    { symbol: 'GBPUSD', label: 'GBP/USD', price: '1.2694', change: '-0.0021', changePct: '-0.17%', direction: 'down', bias: 'BoE uncertainty, mixed data', category: 'fx', tvSymbol: 'OANDA:GBPUSD' },
-    { symbol: 'USOIL', label: 'WTI Crude Oil', price: '79.42', change: '-0.38', changePct: '-0.48%', direction: 'down', bias: 'Supply concerns vs demand outlook', category: 'energy', tvSymbol: 'OANDA:WTICOUSD' },
-    { symbol: 'SENTIMENT', label: 'Market Sentiment', price: 'Risk-On', change: '61', changePct: '+4pts', direction: 'up', bias: 'Greed zone, equities leading', category: 'index', tvSymbol: '' },
-]
-
 const CATEGORY_COLORS: Record<MarketTile['category'], string> = {
     fx: 'border-blue-500/30 text-blue-400',
     metal: 'border-yellow-500/30 text-yellow-400',
@@ -75,24 +63,33 @@ function DirectionIcon({ direction }: { direction: MarketTile['direction'] }) {
 }
 
 export function MacroDeskLive() {
-    const [tiles, setTiles] = useState<MarketTile[]>(FALLBACK_DATA)
+    const [tiles, setTiles] = useState<MarketTile[]>([])
     const [macroBrief, setMacroBrief] = useState<MacroBriefReport | null>(null)
     const [loading, setLoading] = useState(false)
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
     const [online, setOnline] = useState(true)
     const [selectedTile, setSelectedTile] = useState<MarketTile | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
     const refresh = useCallback(async () => {
         setLoading(true)
+        setError(null)
         try {
             const [liveRes, briefRes] = await Promise.all([
                 fetch('/api/macro-live', { signal: AbortSignal.timeout(5000) }),
                 fetch('/api/macro-brief?score=8', { signal: AbortSignal.timeout(10000), cache: 'no-store' }),
             ])
 
-            if (liveRes.ok) {
-                const data = await liveRes.json()
-                if (Array.isArray(data) && data.length > 0) setTiles(data)
+            if (!liveRes.ok) {
+                const payload = await liveRes.json().catch(() => null)
+                throw new Error(payload?.error || 'Live market feed unavailable.')
+            }
+
+            const liveData = await liveRes.json()
+            if (Array.isArray(liveData) && liveData.length > 0) {
+                setTiles(liveData)
+            } else {
+                throw new Error('Live market feed returned no instruments.')
             }
 
             if (briefRes.ok) {
@@ -101,8 +98,9 @@ export function MacroDeskLive() {
             }
 
             setOnline(true)
-        } catch {
+        } catch (refreshError) {
             setOnline(false)
+            setError(refreshError instanceof Error ? refreshError.message : 'Live market feed unavailable.')
         } finally {
             setLoading(false)
             setLastUpdated(new Date())
@@ -122,7 +120,7 @@ export function MacroDeskLive() {
                     {online ? (
                         <><Wifi className="h-4 w-4 text-profit" /><span className="text-muted-foreground">Live macro and market feed</span></>
                     ) : (
-                        <><WifiOff className="h-4 w-4 text-loss" /><span className="text-muted-foreground">Fallback data mode</span></>
+                        <><WifiOff className="h-4 w-4 text-loss" /><span className="text-muted-foreground">Live feed unavailable</span></>
                     )}
                     <span className="text-muted-foreground">· Updated {lastUpdated.toLocaleTimeString()}</span>
                 </div>
@@ -131,6 +129,12 @@ export function MacroDeskLive() {
                     Refresh
                 </Button>
             </div>
+
+            {error ? (
+                <div className="rounded-xl border border-loss/20 bg-loss/8 px-4 py-3 text-sm text-loss">
+                    {error}
+                </div>
+            ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {tiles.filter((tile) => tile.symbol !== 'SENTIMENT').map((tile) => (
