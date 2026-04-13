@@ -133,18 +133,18 @@ export async function POST(req: NextRequest) {
         const newsContext =
             normalizedNewsArticles.length > 0
                 ? normalizedNewsArticles.slice(0, 6).map((article) => ({
-                      title: article.title,
-                      source: article.source,
-                      summary: article.summary,
-                      sentiment: article.sentiment,
-                      relevanceScore: article.relevanceScore,
-                      publishedAt: article.publishedAt,
-                  }))
+                    title: article.title,
+                    source: article.source,
+                    summary: article.summary,
+                    sentiment: article.sentiment,
+                    relevanceScore: article.relevanceScore,
+                    publishedAt: article.publishedAt,
+                }))
                 : macroReport.marketData.news.slice(0, 6).map((headline, index) => ({
-                      title: headline,
-                      source: macroReport.sources[0] || 'Macro brief',
-                      relevanceScore: Math.max(35, 100 - index * 12),
-                  }))
+                    title: headline,
+                    source: macroReport.sources[0] || 'Macro brief',
+                    relevanceScore: Math.max(35, 100 - index * 12),
+                }))
         const providerResult = await runAutoAnalysis({
             pair: symbol,
             timeframe: 'intraday',
