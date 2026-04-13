@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +11,6 @@ import { RiskCalculator } from '@/components/dashboard/risk-calculator'
 import { AIAnalysisPanel } from '@/components/dashboard/ai-analysis-panel'
 import type { ChecklistResult, TradeSetupForm } from '@/lib/trading/types'
 import { toast } from 'sonner'
-import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { CheckCircle, XCircle, Clock, CandlestickChart, ShieldCheck, AlertTriangle, History } from 'lucide-react'
 
@@ -81,7 +81,7 @@ export function TradeWorkspace({
     const [aiVerdict, setAiVerdict] = useState<string>('STANDBY')
     const [aiBias, setAiBias] = useState<string>('NEUTRAL')
     const [aiConfidence, setAiConfidence] = useState<number>(0)
-    const supabase = createClient()
+    const router = useRouter()
 
     const finalStatus = useMemo(() => {
         if (checklist.status === 'INVALID') return 'INVALID'
@@ -91,6 +91,84 @@ export function TradeWorkspace({
 
     const statusCfg = STATUS_CONFIG[finalStatus as keyof typeof STATUS_CONFIG]
     const StatusIcon = statusCfg.icon
+
+    async function submitWorkflowTrade(trade: {
+        pair: string
+        entry: number
+        sl: number
+        tp: number
+        positionSize: number
+        riskAmount: number
+        potentialProfit: number
+        riskReward: number
+    }) {
+        const preTradeResponse = await fetch('/api/pre-trade', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+                pair: trade.pair,
+                entry: trade.entry,
+                stop_loss: trade.sl,
+                take_profit: trade.tp,
+                risk_percent: riskPercent,
+                checklist: {
+                    setup: {
+                        thesisClear: checklist.directionBias !== 'Neutral',
+                        trendAligned: (checklist.htfAgreement || 0) >= 67 && (checklist.ltfAgreement || 0) >= 75,
+                        liquidityMapped: setupForm.liquidity.sweepOnLtf === 'Yes',
+                        riskDefined: setupForm.execution.slSet === 'Yes',
+                        rrAcceptable: !checklist.rrEvaluation?.shouldAvoidTrade,
+                        sessionAligned: setupForm.dxy.aligned === 'Yes' || setupForm.dxy.trend === 'Neutral',
+                        newsClear: setupForm.supplyDemand.confluenceStrong === 'Yes',
+                        disciplineReady:
+                            setupForm.traderIntent.psychology === 'Focused' &&
+                            setupForm.traderIntent.environment === 'Clean / Quiet',
+                    },
+                    aiContext: {
+                        confidence: Math.max(0, Math.min(1, aiConfidence > 0 ? aiConfidence / 100 : checklist.score / 100)),
+                        structureAlignment:
+                            aiVerdict === 'AUTHORIZED'
+                                ? 'aligned'
+                                : aiBias === 'LONG' || aiBias === 'SHORT'
+                                    ? 'mixed'
+                                    : 'counter',
+                        regime: checklist.quarter === 'Q3' ? 'breakout' : checklist.quarter === 'Q2' ? 'range' : 'trend',
+                    },
+                    macroContext: {
+                        biasAlignment: checklist.directionBias === 'Neutral' ? 'counter' : 'aligned',
+                        eventRisk: checklist.rrEvaluation?.shouldAvoidTrade ? 'high' : 'low',
+                        volatility: checklist.quarter === 'Q3' ? 'high' : 'normal',
+                        sessionQuality: setupForm.traderIntent.environment === 'Clean / Quiet' ? 'good' : 'fair',
+                    },
+                    notes: checklist.reason,
+                },
+            }),
+        })
+
+        if (!preTradeResponse.ok) {
+            const payload = await preTradeResponse.json().catch(() => null)
+            throw new Error(payload?.error || 'Failed to create pre-trade.')
+        }
+
+        const preTradePayload = await preTradeResponse.json()
+
+        const executionResponse = await fetch('/api/execution', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'content-type': 'application/json',
+            },
+            body: JSON.stringify({ preTradeId: preTradePayload.preTrade.id }),
+        })
+
+        if (!executionResponse.ok) {
+            const payload = await executionResponse.json().catch(() => null)
+            throw new Error(payload?.error || 'Failed to create execution.')
+        }
+    }
 
     const handleTradeSubmit = async (trade: {
         pair: string
@@ -103,55 +181,17 @@ export function TradeWorkspace({
         riskReward: number
     }) => {
         setPair(trade.pair)
-
-        const { data, error } = await supabase
-            .from('trades')
-            .insert({
-                user_id: userId,
-                pair: trade.pair,
-                direction: trade.entry > trade.sl ? 'buy' : 'sell',
-                entry: trade.entry,
-                sl: trade.sl,
-                tp: trade.tp,
-                rr: trade.riskReward,
-                risk_amount: trade.riskAmount,
-                position_size: trade.positionSize,
-                result: 'pending',
-                checklist_score: Math.round(checklist.score / 10),
-                setup_grade: checklist.grade === 'STANDBY' ? 'B' : checklist.grade,
-                notes: checklist.reason,
-                trade_date: new Date().toISOString().slice(0, 10),
-                bias: aiBias,
-                ai_recommendation: finalStatus,
-                checklist_json: {
-                    ...checklist,
-                    riskReward,
-                },
-                risk_json: {
-                    accountBalance,
-                    riskPercent,
-                    riskReward,
-                    direction: trade.entry > trade.sl ? 'buy' : 'sell',
-                },
-                ai_analysis_json: {
-                    verdict: aiVerdict,
-                    bias: aiBias,
-                    confidence: aiConfidence,
-                },
-            })
-            .select('id')
-            .single()
-
-        if (error) {
-            toast.error('Failed to log trade: ' + error.message)
+        try {
+            await submitWorkflowTrade(trade)
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to log trade.')
             return
         }
 
-        toast.success(`Trade logged (#${data.id.slice(0, 8)}) — mark result in Journal`)
+        toast.success(`Trade logged for ${trade.pair} — review it in Journal`)
 
-        // Navigate to journal after small delay
         setTimeout(() => {
-            window.location.href = '/dashboard/journal'
+            router.push('/dashboard/journal')
         }, 1500)
     }
 
