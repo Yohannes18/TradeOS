@@ -1,92 +1,185 @@
-# TradeOS
+Here is a **clean, professional, production-grade README**—structured like a real SaaS product, easy to scan, and aligned with how serious engineering teams document systems.
 
-TradeOS is a modern trading workspace for planning, executing, and reviewing trades with a structured process. It combines pre-trade validation, risk management, journaling, and account settings in one dashboard.
+---
 
-## Highlights
+# 🚀 TradeOS
 
-- Structured pre-trade checklist with score logging
-- Risk calculator with position sizing workflow
-- Trade journal with performance tracking
-- User-specific settings and preferences
-- Supabase authentication and data storage
+**TradeOS** is a structured trading workspace designed to help traders plan, execute, and review trades with discipline and consistency.
 
-## Tech Stack
+It enforces a professional workflow:
+**PreTrade → Execution → Journal → Analytics**
 
-- Next.js 16 (App Router)
-- React 19
-- TypeScript
-- Tailwind CSS + Radix UI components
-- Supabase (`@supabase/supabase-js`, `@supabase/ssr`)
+---
 
-## Prerequisites
+## ✨ Core Features
 
-- Node.js 20+
-- npm (or pnpm/yarn)
-- A Supabase project
+### 🧠 Pre-Trade System
 
-## Environment Setup
+* Structured checklist validation before entering trades
+* Scoring engine with rule-based discipline tracking
+* Bias and confidence logging
 
-Create your local environment file:
+### 📉 Execution Engine
+
+* Controlled trade lifecycle with validation gates
+* Risk-aware position sizing
+* Immutable execution records
+
+### 📓 Journal System
+
+* One-to-one trade journaling
+* Performance tracking and review
+* Behavioral and strategy insights
+
+### 📊 Analytics
+
+* Trade performance metrics
+* Risk and consistency tracking
+* Strategy evaluation
+
+### ⚙️ User Settings
+
+* Personalized trading preferences
+* Risk configuration
+* Workflow customization
+
+---
+
+## 🏗️ Tech Stack
+
+**Frontend**
+
+* Next.js 16 (App Router)
+* React 19
+* TypeScript
+* Tailwind CSS + Radix UI
+
+**Backend / Infrastructure**
+
+* Supabase (Auth, Database, Storage)
+* PostgreSQL with RLS (Row-Level Security)
+
+**AI & Data (Optional)**
+
+* Gemini API
+* DeepSeek API
+* Alpha Vantage (Market Data)
+* Finnhub (Market Data)
+* RSS feeds (X / Twitter via Nitter)
+
+---
+
+## 📋 Prerequisites
+
+* Node.js **20+**
+* npm / pnpm / yarn
+* Supabase project
+
+---
+
+## ⚙️ Environment Setup
+
+Create environment file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Set the following variables in `.env.local`:
+### Required Variables
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` (optional, recommended for local auth redirect)
-- `NEXT_PUBLIC_SITE_URL` (required for consistent OAuth callback redirects across environments)
-- `BETTER_AUTH_ENABLED` (optional, defaults to `false`; enables Phase-1 Better Auth API scaffold)
-- `BETTER_AUTH_URL` (optional for Better Auth; defaults to `NEXT_PUBLIC_SITE_URL`)
-- `BETTER_AUTH_SECRET` (optional for Better Auth; required before production use)
-- `NEXT_PUBLIC_BETTER_AUTH_ENABLED` (optional, defaults to `false`; enables Better Auth login/signup UI flow)
-- `NEXT_PUBLIC_BETTER_AUTH_URL` (optional; Better Auth client base URL)
-- `GEMINI_API_KEY` (optional, enables Gemini-powered analysis)
-- `DEEPSEEK_API_KEY` (optional, enables DeepSeek-powered analysis)
-- `ALPHA_VANTAGE_API_KEY` (optional, enables Alpha Vantage market news ingestion for macro brief)
-- `FINNHUB_API_KEY` (optional, enables Finnhub market news ingestion for macro brief)
-- `X_NEWS_RSS_URL` (optional; supports comma-separated RSS URLs and defaults to market-query X/Twitter feeds via Nitter)
-- `MACRO_CONFIDENCE_CHECKLIST_WEIGHT` (optional, default `0.5`)
-- `MACRO_CONFIDENCE_MACRO_WEIGHT` (optional, default `0.3`)
-- `MACRO_CONFIDENCE_INDEX_WEIGHT` (optional, default `0.2`)
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SITE_URL=
+```
 
-Confidence weights are auto-normalized at runtime, so they do not need to sum to `1.0`.
+### Optional (Auth Enhancements)
 
-If AI keys are not set, TradeOS will still run automated analysis using its built-in heuristic engine.
+```env
+NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL=
+BETTER_AUTH_ENABLED=false
+BETTER_AUTH_URL=
+BETTER_AUTH_SECRET=
+NEXT_PUBLIC_BETTER_AUTH_ENABLED=false
+NEXT_PUBLIC_BETTER_AUTH_URL=
+```
 
-For OAuth providers, enable Google and Apple in Supabase Auth and add your callback URL:
+### Optional (AI + Analysis)
 
-- `https://YOUR_DOMAIN/auth/callback` (production)
-- `http://localhost:3000/auth/callback` (local)
+```env
+GEMINI_API_KEY=
+DEEPSEEK_API_KEY=
+```
 
-## Database Initialization (Supabase)
+### Optional (Market News)
 
-If your Supabase database is empty, run the bootstrap script once:
+```env
+ALPHA_VANTAGE_API_KEY=
+FINNHUB_API_KEY=
+X_NEWS_RSS_URL=
+```
 
-1. Open Supabase Dashboard → SQL Editor
-2. Open `scripts/000_init_system.sql`
-3. Paste and run the script
+### Optional (Macro Confidence Weights)
 
-For the full trading ecosystem schema (profiles, advanced trade fields, trade images, economic events, and calendar RPC queries), run after bootstrap:
+```env
+MACRO_CONFIDENCE_CHECKLIST_WEIGHT=0.5
+MACRO_CONFIDENCE_MACRO_WEIGHT=0.3
+MACRO_CONFIDENCE_INDEX_WEIGHT=0.2
+```
 
-1. Open `scripts/003_trading_ecosystem_upgrade.sql`
-2. Paste and run in Supabase SQL Editor
+> ⚠️ Weights are automatically normalized at runtime.
 
-The script creates:
+---
 
-- `public.settings`
-- `public.trades`
-- `public.checklist_logs`
-- `public.profiles`
-- `public.trade_images`
-- `public.economic_events`
-- RLS policies for all application tables
-- A trigger that auto-creates default settings for new users
-- Backfill settings for existing users
+## 🧠 AI Behavior
 
-## Running Locally
+* If API keys are provided → AI-powered analysis is enabled
+* If not → system falls back to built-in heuristic engine
+
+---
+
+## 🗄️ Database Setup (Supabase)
+
+### Step 1 — Initial Bootstrap
+
+1. Open Supabase Dashboard
+2. Go to **SQL Editor**
+3. Run:
+
+```
+scripts/000_init_system.sql
+```
+
+---
+
+### Step 2 — Trading Ecosystem Upgrade
+
+Run:
+
+```
+scripts/003_trading_ecosystem_upgrade.sql
+```
+
+---
+
+### This Creates:
+
+* `settings`
+* `trades` (legacy, may be deprecated in new workflow)
+* `checklist_logs`
+* `profiles`
+* `trade_images`
+* `economic_events`
+
+Also includes:
+
+* Row-Level Security (RLS)
+* Default user settings trigger
+* Backfill for existing users
+
+---
+
+## ▶️ Running Locally
 
 Install dependencies:
 
@@ -100,31 +193,107 @@ Start development server:
 npm run dev
 ```
 
-Open http://localhost:3000
+Open:
 
-## Available Scripts
+```
+http://localhost:3000
+```
 
-- `npm run dev` — start local dev server
-- `npm run build` — create production build
-- `npm run start` — run production build locally
-- `npm run lint` — run lint checks
+---
 
-## Deployment
+## 📦 Available Scripts
 
-Deploy on Vercel:
+```bash
+npm run dev     # Start development server
+npm run build   # Build for production
+npm run start   # Run production build
+npm run lint    # Lint codebase
+```
 
-1. Import this project in Vercel (or use `vercel` CLI)
-2. Add the same environment variables from `.env.local` in the Vercel project settings
-3. Trigger deployment
+---
 
-## Project Structure
+## 🚀 Deployment (Vercel)
 
-- `app/` — routes, layouts, and pages
-- `components/` — UI and feature components
-- `lib/supabase/` — Supabase server/client/middleware helpers
-- `scripts/` — SQL schema and initialization scripts
+1. Import project into Vercel
+2. Add environment variables
+3. Deploy
 
-## Notes
+---
 
-- The app supports running without Supabase env values for basic shell rendering, but authentication and data operations require valid Supabase configuration.
-- Keep credentials in `.env.local`; do not commit secrets.
+## 📁 Project Structure
+
+```
+app/                 → Routes & pages
+components/          → UI & feature components
+lib/supabase/        → Supabase helpers
+scripts/             → SQL migrations & setup
+```
+
+---
+
+## 🔐 Authentication
+
+* Powered by Supabase Auth
+* Supports OAuth (Google, Apple)
+
+### Callback URLs:
+
+**Production**
+
+```
+https://YOUR_DOMAIN/auth/callback
+```
+
+**Local**
+
+```
+http://localhost:3000/auth/callback
+```
+
+---
+
+## ⚠️ Important Notes
+
+* App can render without Supabase, but:
+
+  * Auth will not work
+  * Data persistence will fail
+
+* Never commit `.env.local`
+
+* Legacy `trades` table may still exist:
+
+  * Recommended to migrate fully to
+    **PreTrade → Execution → Journal** system
+
+---
+
+## 🧭 System Philosophy
+
+TradeOS is built around one principle:
+
+> **Consistency beats randomness in trading.**
+
+The system enforces:
+
+* disciplined entries
+* structured execution
+* reflective journaling
+
+---
+
+## 🧪 Current Status
+
+* ✅ Core trading workflow implemented
+* ⚠️ AI + News integration requires stabilization
+* ⚠️ Possible legacy system remnants depending on branch
+
+---
+
+## 📌 Roadmap (Suggested)
+
+* Full AI-driven trade assistant
+* Real-time news intelligence engine
+* Advanced analytics dashboard
+* Mobile optimization
+
