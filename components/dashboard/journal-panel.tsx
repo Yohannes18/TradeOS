@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { createClient } from '@/lib/supabase/client'
+import { useCloseTrade, useCreateJournal } from '@/hooks/use-trading-workflow'
 import { normalizeSessionValue, sessionLabel, SESSION_LABELS, SESSION_VALUES } from '@/lib/session'
 import type { SessionValue, SessionValueOrUnknown } from '@/lib/session'
 import { cn } from '@/lib/utils'
@@ -140,7 +140,8 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
   const [attachmentUrl, setAttachmentUrl] = useState('')
   const [isChecklistLoading, setIsChecklistLoading] = useState(false)
   const [isJournalLoading, setIsJournalLoading] = useState(false)
-  const supabase = createClient()
+  const closeExecution = useCloseTrade()
+  const createJournal = useCreateJournal()
 
   const getEffectiveScore = (trade: Trade) => trade.checklist_score ?? trade.score ?? 0
   const getSessionKey = (trade: Trade) => normalizeSessionValue(trade.session, trade.notes)
@@ -275,7 +276,6 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
       if (!trades.length) return
 
       setIsJournalLoading(true)
-      const tradeIds = trades.map((trade) => trade.id)
       const dates = Array.from(
         new Set(
           trades.map((trade) => getTradeDateKey(trade)),
@@ -286,16 +286,24 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
       const lastDate = dates[dates.length - 1]
 
       if (firstDate && lastDate) {
-        const { data: entries, error: entryError } = await supabase
-          .from('daily_journal_entries')
-          .select('id, journal_date, note, ai_summary, updated_at')
-          .eq('user_id', userId)
-          .gte('journal_date', firstDate)
-          .lte('journal_date', lastDate)
+        try {
+          const response = await fetch(
+            `/api/journal/workspace?from=${encodeURIComponent(firstDate)}&to=${encodeURIComponent(lastDate)}&executionIds=${encodeURIComponent(trades.map((trade) => trade.id).join(','))}`,
+            {
+              credentials: 'include',
+            },
+          )
 
-        if (!entryError && entries) {
+          if (!response.ok) {
+            throw new Error('Failed to load journal workspace data.')
+          }
+
+          const payload = await response.json()
+          const entries = (payload.entries || []) as DailyJournalEntry[]
+          const images = (payload.images || []) as TradeImage[]
+
           const nextEntries = entries.reduce<Record<string, DailyJournalEntry>>((acc, entry) => {
-            acc[entry.journal_date] = entry as DailyJournalEntry
+            acc[entry.journal_date] = entry
             return acc
           }, {})
 
@@ -306,31 +314,24 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
               return acc
             }, {}),
           )
+
+          const nextImages = images.reduce<Record<string, TradeImage[]>>((acc, image) => {
+            const items = acc[image.trade_id] || []
+            items.push(image)
+            acc[image.trade_id] = items
+            return acc
+          }, {})
+          setTradeImages(nextImages)
+        } catch {
+          toast.error('Failed to load journal workspace data.')
         }
-      }
-
-      const { data: images, error: imageError } = await supabase
-        .from('trade_images')
-        .select('id, trade_id, image_url, created_at')
-        .in('trade_id', tradeIds)
-        .order('created_at', { ascending: false })
-
-      if (!imageError && images) {
-        const nextImages = (images as TradeImage[]).reduce<Record<string, TradeImage[]>>((acc, image) => {
-          const items = acc[image.trade_id] || []
-          items.push(image)
-          acc[image.trade_id] = items
-          return acc
-        }, {})
-
-        setTradeImages(nextImages)
       }
 
       setIsJournalLoading(false)
     }
 
     loadJournalSupportData()
-  }, [supabase, trades, userId])
+  }, [trades, userId])
 
   useEffect(() => {
     const loadChecklist = async () => {
@@ -340,42 +341,66 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
       }
 
       setIsChecklistLoading(true)
-      const { data, error } = await supabase
-        .from('checklist_logs')
-        .select('id, context_score, setup_score, execution_score, total_score, data')
-        .eq('user_id', userId)
-        .eq('trade_id', selectedTrade.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      try {
+        const response = await fetch(
+          `/api/journal/workspace?executionId=${encodeURIComponent(selectedTrade.id)}`,
+          {
+            credentials: 'include',
+          },
+        )
 
-      if (error) {
+        if (!response.ok) {
+          throw new Error('Failed to load checklist details.')
+        }
+
+        const payload = await response.json()
+        setSelectedChecklist((payload.checklist as ChecklistLog | null) || null)
+      } catch {
         setSelectedChecklist(null)
         setIsChecklistLoading(false)
         return
       }
-
-      setSelectedChecklist((data as ChecklistLog | null) || null)
       setIsChecklistLoading(false)
     }
 
     loadChecklist()
-  }, [selectedTrade?.id, supabase, userId])
+  }, [selectedTrade?.id, userId])
+
+  const resolveExitPrice = (trade: Trade, result: 'win' | 'loss' | 'breakeven') => {
+    if (result === 'win') return trade.tp ?? null
+    if (result === 'loss') return trade.sl ?? null
+    return trade.entry ?? null
+  }
 
   const handleResultChange = async (tradeId: string, result: 'win' | 'loss' | 'breakeven') => {
-    const { error } = await supabase
-      .from('trades')
-      .update({ result })
-      .eq('id', tradeId)
-      .eq('user_id', userId)
-
-    if (error) {
-      toast.error('Failed to update result')
+    const targetTrade = trades.find((trade) => trade.id === tradeId)
+    if (!targetTrade) {
+      toast.error('Trade not found')
       return
     }
 
-    setTrades((prev) => prev.map((trade) => (trade.id === tradeId ? { ...trade, result } : trade)))
-    toast.success('Trade result updated')
+    const exitPrice = resolveExitPrice(targetTrade, result)
+    if (typeof exitPrice !== 'number' || Number.isNaN(exitPrice) || exitPrice <= 0) {
+      toast.error('Cannot close execution: missing valid exit price.')
+      return
+    }
+
+    try {
+      await closeExecution.mutateAsync({ id: tradeId, exitPrice })
+      await createJournal.mutateAsync({
+        execution_id: tradeId,
+        emotions: ['disciplined'],
+        mistakes: [],
+        adherence_score: result === 'win' ? 1 : result === 'breakeven' ? 0.7 : 0.4,
+        notes: `Result logged as ${result}.`,
+      })
+
+      setTrades((prev) => prev.map((trade) => (trade.id === tradeId ? { ...trade, result } : trade)))
+      toast.success('Execution closed and journal entry created')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update trade workflow.'
+      toast.error(message)
+    }
   }
 
   const handleSaveDayNote = async (journalDate: string) => {
@@ -386,28 +411,31 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
       ? `${summary.tradeCount} trades, ${Math.round(summary.winRate)}% win rate, ${summary.mistakeCount} mistake-tagged trades. ${summary.netPnl >= 0 ? 'Keep reinforcing what worked.' : 'Review execution and context alignment before the next session.'}`
       : null
 
-    const { data, error } = await supabase
-      .from('daily_journal_entries')
-      .upsert(
-        {
-          user_id: userId,
-          journal_date: journalDate,
-          note,
-          ai_summary: aiSummary,
-        },
-        { onConflict: 'user_id,journal_date' },
-      )
-      .select('id, journal_date, note, ai_summary, updated_at')
-      .single()
+    const response = await fetch('/api/journal/workspace', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'saveDayNote',
+        journalDate,
+        note,
+        aiSummary,
+      }),
+    })
 
-    if (error) {
-      toast.error('Failed to save day note. Run the latest journal SQL migration if needed.')
+    if (!response.ok) {
+      toast.error('Failed to save day note.')
       return
     }
 
+    const payload = await response.json()
+    const data = payload.entry as DailyJournalEntry
+
     setJournalEntries((prev) => ({
       ...prev,
-      [journalDate]: data as DailyJournalEntry,
+      [journalDate]: data,
     }))
     toast.success('Daily journal note saved')
   }
@@ -418,23 +446,30 @@ export function JournalPanel({ userId, initialTrades }: JournalPanelProps) {
       return
     }
 
-    const { data, error } = await supabase
-      .from('trade_images')
-      .insert({
-        trade_id: selectedTrade.id,
-        image_url: attachmentUrl.trim(),
-      })
-      .select('id, trade_id, image_url, created_at')
-      .single()
+    const response = await fetch('/api/journal/workspace', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'addAttachment',
+        executionId: selectedTrade.id,
+        imageUrl: attachmentUrl.trim(),
+      }),
+    })
 
-    if (error) {
+    if (!response.ok) {
       toast.error('Failed to save attachment')
       return
     }
 
+    const payload = await response.json()
+    const data = payload.image as TradeImage
+
     setTradeImages((prev) => ({
       ...prev,
-      [selectedTrade.id]: [data as TradeImage, ...(prev[selectedTrade.id] || [])],
+      [selectedTrade.id]: [data, ...(prev[selectedTrade.id] || [])],
     }))
     setAttachmentUrl('')
     toast.success('Attachment saved')
