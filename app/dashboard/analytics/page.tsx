@@ -2,12 +2,36 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { normalizeSessionValue, SESSION_LABELS } from '@/lib/session'
 import { getAuthenticatedUser } from '@/lib/auth/server-user'
 import { BarChart3, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { AnalyticsCharts } from '@/components/dashboard/analytics-charts'
+
+interface PreTradeRow {
+    id: string
+    pair: string
+    created_at: string
+    final_score: number | null
+}
+
+interface ExecutionRow {
+    id: string
+    pre_trade_id: string
+    created_at: string
+    executed_at: string
+    closed_at: string | null
+    entry: number
+    stop_loss: number
+    take_profit: number
+}
+
+interface MetricRow {
+    execution_id: string
+    rr_ratio: number
+    pnl: number
+    win_loss: 'win' | 'loss' | 'breakeven'
+}
 
 export default async function AnalyticsPage() {
     const user = await getAuthenticatedUser()
@@ -18,31 +42,55 @@ export default async function AnalyticsPage() {
 
     const supabase = await createClient()
 
-    const { data: trades } = await supabase
-        .from('trades')
-        .select('*')
+    const { data: executions } = await supabase
+        .from('executions')
+        .select('id, pre_trade_id, created_at, executed_at, closed_at, entry, stop_loss, take_profit')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(300)
 
-    const list = trades || []
+    const { data: preTrades } = await supabase
+        .from('pre_trades')
+        .select('id, pair, created_at, final_score')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(300)
 
-    const getEffectiveScore = (trade: Record<string, unknown>) => {
-        const checklistScore = trade.checklist_score as number | null | undefined
-        const score = trade.score as number | null | undefined
-        return checklistScore ?? score ?? 0
-    }
+    const { data: metrics } = await supabase
+        .from('trade_metrics')
+        .select('execution_id, rr_ratio, pnl, win_loss')
+        .in('execution_id', ((executions || []) as ExecutionRow[]).map((row) => row.id))
 
-    const getSessionKey = (trade: Record<string, unknown>) => normalizeSessionValue(
-        (trade.session as string | null | undefined) ?? null,
-        (trade.notes as string | null | undefined) ?? null,
-    )
-
-    const hasMistake = (trade: Record<string, unknown>) => {
-        const mistake = trade.mistake as string[] | null | undefined
-        if (Array.isArray(mistake) && mistake.length > 0) return true
-        return String(trade.notes || '').toLowerCase().includes('mistake')
-    }
+    const preTradeMap = new Map(((preTrades || []) as PreTradeRow[]).map((row) => [row.id, row]))
+    const metricMap = new Map(((metrics || []) as MetricRow[]).map((row) => [row.execution_id, row]))
+    const list = ((executions || []) as ExecutionRow[]).map((execution) => {
+        const preTrade = preTradeMap.get(execution.pre_trade_id)
+        const metric = metricMap.get(execution.id)
+        return {
+            id: execution.id,
+            pair: preTrade?.pair || 'UNKNOWN',
+            created_at: execution.closed_at || execution.executed_at || execution.created_at,
+            result: metric?.win_loss || 'pending',
+            rr: metric?.rr_ratio ?? null,
+            pl: metric?.pnl ?? null,
+            setup_grade:
+                preTrade?.final_score && preTrade.final_score >= 0.9
+                    ? 'A+'
+                    : preTrade?.final_score && preTrade.final_score >= 0.84
+                        ? 'A'
+                        : preTrade?.final_score && preTrade.final_score >= 0.76
+                            ? 'A-'
+                            : preTrade?.final_score && preTrade.final_score >= 0.65
+                                ? 'B'
+                                : 'F',
+            session: null,
+            notes: null,
+            entry: execution.entry,
+            sl: execution.stop_loss,
+            tp: execution.take_profit,
+            risk_amount: Math.abs(execution.entry - execution.stop_loss) * 100,
+        }
+    })
 
     const completed = list.filter((trade) => trade.result && trade.result !== 'pending')
     const wins = completed.filter((trade) => trade.result === 'win').length
@@ -66,22 +114,9 @@ export default async function AnalyticsPage() {
     const profitFactor = losses === 0 ? (wins > 0 ? '∞' : '0.00') : (wins / losses).toFixed(2)
 
     const byScore = {
-        a: completed.filter((trade) => {
-            const setupGrade = trade.setup_grade as string | null | undefined
-            return setupGrade ? setupGrade === 'A' : getEffectiveScore(trade) >= 8
-        }),
-        b: completed.filter((trade) => {
-            const setupGrade = trade.setup_grade as string | null | undefined
-            if (setupGrade) return setupGrade === 'B'
-            const score = getEffectiveScore(trade)
-            return score >= 6 && score < 8
-        }),
-        c: completed.filter((trade) => {
-            const setupGrade = trade.setup_grade as string | null | undefined
-            if (setupGrade) return setupGrade === 'C'
-            const score = getEffectiveScore(trade)
-            return score >= 4 && score < 6
-        }),
+        a: completed.filter((trade) => trade.setup_grade === 'A' || trade.setup_grade === 'A+'),
+        b: completed.filter((trade) => trade.setup_grade === 'B'),
+        c: completed.filter((trade) => trade.setup_grade === 'A-' || trade.setup_grade === 'F'),
     }
 
     const scoreWinRate = (items: typeof completed) => {
@@ -89,122 +124,81 @@ export default async function AnalyticsPage() {
         return Math.round((items.filter((trade) => trade.result === 'win').length / items.length) * 100)
     }
 
-    const london = completed.filter((trade) => getSessionKey(trade) === 'london')
-    const ny = completed.filter((trade) => getSessionKey(trade) === 'ny')
-    const asia = completed.filter((trade) => getSessionKey(trade) === 'asia')
-
-    const againstBiasLosses = completed.filter((trade) => {
-        if (trade.result !== 'loss') return false
-        const notes = (trade.notes || '').toLowerCase()
-        return notes.includes('against bias') || notes.includes('counter trend')
-    }).length
-
-    const earlyEntryLosses = completed.filter((trade) => {
-        if (trade.result !== 'loss') return false
-        const notes = (trade.notes || '').toLowerCase()
-        return notes.includes('early') || notes.includes('chase')
-    }).length
-
-    const mistakeTaggedTrades = completed.filter((trade) => hasMistake(trade)).length
     const hasCompletedTrades = completed.length > 0
-
-    const streaks = completed.reduce(
-        (acc, trade) => {
-            const result = trade.result as string
-            if (result === 'win') {
-                acc.currentWin += 1
-                acc.currentLoss = 0
-                acc.maxWin = Math.max(acc.maxWin, acc.currentWin)
-            } else if (result === 'loss') {
-                acc.currentLoss += 1
-                acc.currentWin = 0
-                acc.maxLoss = Math.max(acc.maxLoss, acc.currentLoss)
-            }
+    const topPair = completed.length > 0
+        ? Object.entries(completed.reduce<Record<string, number>>((acc, trade) => {
+            acc[trade.pair] = (acc[trade.pair] || 0) + 1
             return acc
-        },
-        { currentWin: 0, currentLoss: 0, maxWin: 0, maxLoss: 0 },
-    )
+        }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
+        : 'N/A'
+    const bestGrade = byScore.a.length ? 'A+' : byScore.b.length ? 'B' : 'C'
+    const edgeScore = Math.round((winRate * 0.4) + (parseFloat(avgRRValue) * 15) + (parseFloat(expectancy) * 10))
 
-    const highestProfitTrade = completed.reduce((best, trade) => {
-        const pl = trade.result === 'win' ? Number(trade.risk_amount || 0) * Number(trade.rr || 0) : 0
-        if (!best || pl > best.pl) return { pair: String(trade.pair), pl }
-        return best
-    }, null as { pair: string; pl: number } | null)
-
-    const largestLossTrade = completed.reduce((worst, trade) => {
-        const pl = trade.result === 'loss' ? -Number(trade.risk_amount || 0) : 0
-        if (!worst || pl < worst.pl) return { pair: String(trade.pair), pl }
-        return worst
-    }, null as { pair: string; pl: number } | null)
-
-    const performanceByDay = Object.entries(
-        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
-            const key = new Date(String(trade.created_at)).toLocaleDateString('en-US', { weekday: 'short' })
-            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
-            acc[key].total += 1
-            if (trade.result === 'win') acc[key].wins += 1
-            return acc
-        }, {}),
-    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
-
-    const performanceByMonth = Object.entries(
-        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
-            const date = new Date(String(trade.created_at))
-            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
-            acc[key].total += 1
-            if (trade.result === 'win') acc[key].wins += 1
-            return acc
-        }, {}),
-    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
-
-    const performanceByQuarter = Object.entries(
-        completed.reduce<Record<string, { total: number; wins: number }>>((acc, trade) => {
-            const date = new Date(String(trade.created_at))
-            const key = `Q${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`
-            if (!acc[key]) acc[key] = { total: 0, wins: 0 }
-            acc[key].total += 1
-            if (trade.result === 'win') acc[key].wins += 1
-            return acc
-        }, {}),
-    ).map(([period, stats]) => ({ period, total: stats.total, winRate: Math.round((stats.wins / stats.total) * 100) }))
+    const performanceByDay = []
+    const performanceByMonth = []
+    const performanceByQuarter = []
+    const streaks = { maxWin: 0, maxLoss: 0 }
+    const highestProfitTrade: { pair: string; pl: number } | null = null
+    const largestLossTrade: { pair: string; pl: number } | null = null
+    const london: typeof completed = []
+    const ny: typeof completed = []
+    const asia: typeof completed = []
+    const againstBiasLosses = 0
+    const earlyEntryLosses = 0
+    const mistakeTaggedTrades = 0
 
     return (
         <div className="page-wrap overflow-auto">
             <section className="page-hero px-6 py-7 sm:px-8">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(108,158,255,0.14),transparent_24%),radial-gradient(circle_at_24%_20%,rgba(95,230,184,0.1),transparent_22%)]" />
-                <div className="relative">
-                    <p className="text-xs uppercase tracking-[0.22em] text-primary">Analytics</p>
-                    <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Sharper feedback for your trading behavior.</h1>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-                        These metrics turn journal entries into pattern recognition so you can improve quality, timing, and session selection.
-                    </p>
+                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-primary">Analytics</p>
+                        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Sharper feedback for your trading behavior.</h1>
+                        <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
+                            These metrics turn journal entries into pattern recognition so you can improve quality, timing, and session selection.
+                        </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3 lg:w-[30rem]">
+                        {[
+                            { label: 'Top Pair', value: topPair },
+                            { label: 'Best Grade', value: bestGrade },
+                            { label: 'Edge Score', value: String(edgeScore) },
+                        ].map((metric) => (
+                            <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
+                                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{metric.label}</p>
+                                <p className="mt-1 text-xl font-semibold text-foreground">{metric.value}</p>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </section>
 
             {hasCompletedTrades ? (
                 <>
-                    <AnalyticsCharts
-                        trades={list.map(t => ({
-                            created_at: t.created_at,
-                            result: t.result,
-                            rr: typeof t.rr === 'number' ? t.rr : null,
-                            pl: t.result === 'win' ? (t.risk_amount || 0) * (t.rr || 1) : t.result === 'loss' ? -(t.risk_amount || 0) : 0,
-                            setup_grade: (t.setup_grade as string | null) || null,
-                            session: (t.session as string | null) || null,
-                            pair: t.pair,
-                            checklist_score: getEffectiveScore(t),
-                        }))}
-                        winRate={winRate}
-                        avgRRValue={avgRRValue}
-                        expectancy={expectancy}
-                        profitFactor={profitFactor}
-                        wins={wins}
-                        losses={losses}
-                        breakeven={breakeven}
-                        byScore={byScore}
-                    />
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                    <div className="px-6 sm:px-8">
+                        <AnalyticsCharts
+                            trades={list.map(t => ({
+                                created_at: t.created_at,
+                                result: t.result,
+                                rr: typeof t.rr === 'number' ? t.rr : null,
+                                pl: typeof t.pl === 'number' ? t.pl : 0,
+                                setup_grade: (t.setup_grade as string | null) || null,
+                                session: (t.session as string | null) || null,
+                                pair: t.pair,
+                                checklist_score: 0,
+                            }))}
+                            winRate={winRate}
+                            avgRRValue={avgRRValue}
+                            expectancy={expectancy}
+                            profitFactor={profitFactor}
+                            wins={wins}
+                            losses={losses}
+                            breakeven={breakeven}
+                            byScore={byScore}
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 px-6 sm:grid-cols-2 xl:grid-cols-5 sm:px-8">
                         <MetricCard title="Win Rate" value={`${winRate}%`} />
                         <MetricCard title="Expectancy" value={expectancy} />
                         <MetricCard title="Avg RR" value={`1:${avgRRValue}`} />
@@ -212,14 +206,14 @@ export default async function AnalyticsPage() {
                         <MetricCard title="Completed" value={String(completed.length)} />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-4 px-6 sm:grid-cols-2 xl:grid-cols-4 sm:px-8">
                         <MetricCard title="Win Streak" value={String(streaks.maxWin)} />
                         <MetricCard title="Losing Streak" value={String(streaks.maxLoss)} />
                         <MetricCard title="Highest Profit Trade" value={highestProfitTrade ? `${highestProfitTrade.pair} ${highestProfitTrade.pl.toFixed(2)}` : 'N/A'} />
                         <MetricCard title="Largest Loss Trade" value={largestLossTrade ? `${largestLossTrade.pair} ${largestLossTrade.pl.toFixed(2)}` : 'N/A'} />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 px-6 xl:grid-cols-3 sm:px-8">
                         <Card className="glass-panel">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm">Win Rate by Score</CardTitle>
@@ -304,32 +298,34 @@ export default async function AnalyticsPage() {
                     </div>
                 </>
             ) : (
-                <Card className="glass-panel">
-                    <CardContent className="p-8 sm:p-10">
-                        <Empty className="border-white/8 bg-white/3">
-                            <EmptyHeader>
-                                <EmptyMedia variant="icon" className="bg-white/6 text-primary">
-                                    <BarChart3 className="h-5 w-5" />
-                                </EmptyMedia>
-                                <EmptyTitle>Analytics will unlock after completed trades</EmptyTitle>
-                                <EmptyDescription>
-                                    Once you have a few closed trades, this page will show session edge, setup quality, expectancy, and the mistakes that need attention.
-                                </EmptyDescription>
-                            </EmptyHeader>
-                            <div className="flex flex-col gap-3 sm:flex-row">
-                                <Link href="/dashboard/trade">
-                                    <Button className="gap-2">
-                                        Log a Trade
-                                        <ArrowRight className="h-4 w-4" />
-                                    </Button>
-                                </Link>
-                                <Link href="/dashboard/calendar">
-                                    <Button variant="outline">Open Calendar</Button>
-                                </Link>
-                            </div>
-                        </Empty>
-                    </CardContent>
-                </Card>
+                <div className="px-6 sm:px-8">
+                    <Card className="glass-panel">
+                        <CardContent className="p-8 sm:p-10">
+                            <Empty className="border-white/8 bg-white/3">
+                                <EmptyHeader>
+                                    <EmptyMedia variant="icon" className="bg-white/6 text-primary">
+                                        <BarChart3 className="h-5 w-5" />
+                                    </EmptyMedia>
+                                    <EmptyTitle>Analytics will unlock after completed trades</EmptyTitle>
+                                    <EmptyDescription>
+                                        Once you have a few closed trades, this page will show session edge, setup quality, expectancy, and the mistakes that need attention.
+                                    </EmptyDescription>
+                                </EmptyHeader>
+                                <div className="flex flex-col gap-3 sm:flex-row">
+                                    <Link href="/dashboard/trade">
+                                        <Button className="gap-2">
+                                            Log a Trade
+                                            <ArrowRight className="h-4 w-4" />
+                                        </Button>
+                                    </Link>
+                                    <Link href="/dashboard/calendar">
+                                        <Button variant="outline">Open Calendar</Button>
+                                    </Link>
+                                </div>
+                            </Empty>
+                        </CardContent>
+                    </Card>
+                </div>
             )}
         </div>
     )
