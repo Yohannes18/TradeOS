@@ -521,25 +521,25 @@ async function fetchAlphaVantageNews(limit = 8): Promise<NewsFetchResult> {
         }
         const articles = Array.isArray(payload.feed)
             ? payload.feed
-                  .map((item: {
-                      title?: unknown
-                      summary?: unknown
-                      source?: unknown
-                      time_published?: unknown
-                  }): NewsArticle | null =>
-                      normalizeNewsArticle({
-                          title: typeof item?.title === 'string' ? item.title : '',
-                          summary: typeof item?.summary === 'string' ? item.summary : undefined,
-                          source: typeof item?.source === 'string' ? item.source : 'Alpha Vantage',
-                          publishedAt:
-                              typeof item?.time_published === 'string'
-                                  ? item.time_published.replace(
-                                        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/,
-                                        '$1-$2-$3T$4:$5:$6Z',
-                                    )
-                                  : undefined,
-                      }),
-                  )
+                .map((item: {
+                    title?: unknown
+                    summary?: unknown
+                    source?: unknown
+                    time_published?: unknown
+                }): NewsArticle | null =>
+                    normalizeNewsArticle({
+                        title: typeof item?.title === 'string' ? item.title : '',
+                        summary: typeof item?.summary === 'string' ? item.summary : undefined,
+                        source: typeof item?.source === 'string' ? item.source : 'Alpha Vantage',
+                        publishedAt:
+                            typeof item?.time_published === 'string'
+                                ? item.time_published.replace(
+                                    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/,
+                                    '$1-$2-$3T$4:$5:$6Z',
+                                )
+                                : undefined,
+                    }),
+                )
                 .filter(isNewsArticle)
             : []
 
@@ -584,19 +584,19 @@ async function fetchFinnhubNews(limit = 8): Promise<NewsFetchResult> {
         }>
         const articles = Array.isArray(payload)
             ? payload
-                  .map((item: {
-                      headline?: unknown
-                      summary?: unknown
-                      source?: unknown
-                      datetime?: unknown
-                  }): NewsArticle | null =>
-                      normalizeNewsArticle({
-                          title: typeof item?.headline === 'string' ? item.headline : '',
-                          summary: typeof item?.summary === 'string' ? item.summary : undefined,
-                          source: typeof item?.source === 'string' ? item.source : 'Finnhub',
-                          publishedAt: typeof item?.datetime === 'number' ? item.datetime * 1000 : undefined,
-                      }),
-                  )
+                .map((item: {
+                    headline?: unknown
+                    summary?: unknown
+                    source?: unknown
+                    datetime?: unknown
+                }): NewsArticle | null =>
+                    normalizeNewsArticle({
+                        title: typeof item?.headline === 'string' ? item.headline : '',
+                        summary: typeof item?.summary === 'string' ? item.summary : undefined,
+                        source: typeof item?.source === 'string' ? item.source : 'Finnhub',
+                        publishedAt: typeof item?.datetime === 'number' ? item.datetime * 1000 : undefined,
+                    }),
+                )
                 .filter(isNewsArticle)
             : []
 
