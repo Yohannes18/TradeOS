@@ -75,11 +75,16 @@ export async function GET() {
             }
         }).filter(Boolean)
 
-        if (tiles.length < 4) throw new Error('Insufficient data')
+        if (tiles.length < 4) throw new Error('Insufficient Yahoo Finance data')
 
         return NextResponse.json(tiles)
-    } catch {
-        // Return empty array so client falls back to static data
-        return NextResponse.json([], { status: 200 })
+    } catch (error) {
+        return NextResponse.json(
+            {
+                error: 'Failed to fetch live market data from Yahoo Finance.',
+                details: error instanceof Error ? error.message : 'Unknown error',
+            },
+            { status: 502 },
+        )
     }
 }
