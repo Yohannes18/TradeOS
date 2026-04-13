@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { ChecklistPanel } from './checklist-panel'
 import { ExecutionPanel } from './execution-panel'
 import { TradingAnalysisPanel } from './trading-analysis-panel'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ClipboardCheck, CandlestickChart, BrainCircuit } from 'lucide-react'
@@ -44,7 +43,6 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
   const [lastChecklistLogId, setLastChecklistLogId] = useState<string | null>(null)
   const bias: 'bullish' | 'bearish' | 'neutral' = 'neutral'
   const notes = ''
-  const supabase = createClient()
   const router = useRouter()
 
   const handleTradeSubmit = async (trade: {
@@ -57,42 +55,71 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
     potentialProfit: number
     riskReward: number
   }) => {
-    const setupGrade = score >= 8 ? 'A' : score >= 6 ? 'B' : 'C'
-    const direction: 'buy' | 'sell' = trade.entry >= trade.sl ? 'buy' : 'sell'
-
-    const { data, error } = await supabase.from('trades').insert({
-      user_id: userId,
-      pair: trade.pair,
-      score,
-      bias,
-      direction,
-      entry: trade.entry,
-      sl: trade.sl,
-      tp: trade.tp,
-      rr: trade.riskReward,
-      risk_amount: trade.riskAmount,
-      position_size: trade.positionSize,
-      result: 'pending',
-      checklist_score: score,
-      setup_grade: setupGrade,
-      fundamental_bias: bias,
-      session: checklistContext.session,
-      market_regime: checklistContext.regime,
-      trade_date: new Date().toISOString().slice(0, 10),
+    const checklistPayload = {
+      setup: {
+        thesisClear: score >= 6,
+        trendAligned: checklistContext.regime === 'trend',
+        liquidityMapped: true,
+        riskDefined: true,
+        rrAcceptable: trade.riskReward >= 1,
+        sessionAligned: checklistContext.session === 'london' || checklistContext.session === 'ny',
+        newsClear: true,
+        disciplineReady: decision !== 'NO TRADE',
+      },
+      aiContext: {
+        confidence: Math.max(0, Math.min(1, score / 10)),
+        structureAlignment: bias === 'neutral' ? 'mixed' : 'aligned',
+        regime: checklistContext.regime === 'volatile' ? 'breakout' : checklistContext.regime,
+      },
+      macroContext: {
+        biasAlignment: bias === 'neutral' ? 'counter' : 'aligned',
+        eventRisk: 'low',
+        volatility: checklistContext.regime === 'volatile' ? 'high' : 'normal',
+        sessionQuality: checklistContext.session === 'london' ? 'good' : 'fair',
+      },
       notes,
-    }).select('id').single()
+    }
 
-    if (error) {
-      toast.error('Failed to log trade. Please try again.')
+    const preTradeResponse = await fetch('/api/pre-trade', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        pair: trade.pair,
+        entry: trade.entry,
+        stop_loss: trade.sl,
+        take_profit: trade.tp,
+        risk_percent: settings.risk_percent,
+        checklist: checklistPayload,
+      }),
+    })
+
+    if (!preTradeResponse.ok) {
+      const payload = await preTradeResponse.json().catch(() => null)
+      toast.error(payload?.error || 'Failed to log trade. Please try again.')
+      return
+    }
+
+    const preTradePayload = await preTradeResponse.json()
+
+    const executionResponse = await fetch('/api/execution', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ preTradeId: preTradePayload.preTrade.id }),
+    })
+
+    if (!executionResponse.ok) {
+      const payload = await executionResponse.json().catch(() => null)
+      toast.error(payload?.error || 'Failed to log trade. Please try again.')
       return
     }
 
     if (data?.id && lastChecklistLogId) {
-      await supabase
-        .from('checklist_logs')
-        .update({ trade_id: data.id })
-        .eq('id', lastChecklistLogId)
-        .eq('user_id', userId)
       setLastChecklistLogId(null)
     }
 
