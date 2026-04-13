@@ -1,9 +1,15 @@
 import { updateSession } from '@/lib/supabase/middleware'
 import { updateBetterAuthSession } from '@/lib/auth/middleware'
+import { applyTradingApiMiddleware } from '@/lib/security/trading-api-middleware'
 import { NextResponse } from 'next/server'
 import { type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+    const tradingApiResponse = await applyTradingApiMiddleware(request)
+    if (tradingApiResponse) {
+        return tradingApiResponse
+    }
+
     if (request.nextUrl.pathname.startsWith('/api/auth')) {
         return NextResponse.next({ request })
     }
