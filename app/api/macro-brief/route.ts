@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 
 type Trend = 'up' | 'down' | 'range'
 type SocialSentiment = 'bullish' | 'bearish' | 'mixed'
@@ -30,6 +31,7 @@ type MarketData = {
     nasdaq: number
     oil_price: number
     news: string[]
+    newsArticles?: NewsArticle[]
     economic_events: string[]
     social_sentiment: SocialSentiment
 }
@@ -82,6 +84,33 @@ type SourceHealth = {
     status: 'ok' | 'blocked' | 'empty' | 'error'
 }
 
+type NewsSentiment = 'positive' | 'negative' | 'neutral'
+
+type NewsArticle = {
+    title: string
+    source: string
+    publishedAt: Date
+    summary: string
+    sentiment: NewsSentiment
+    relevanceScore: number
+}
+
+type NewsFetchResult = {
+    articles: NewsArticle[]
+    health: SourceHealth
+}
+
+const newsArticleSchema = z
+    .object({
+        title: z.string().trim().min(1),
+        source: z.string().trim().min(1),
+        publishedAt: z.date(),
+        summary: z.string().trim().min(1),
+        sentiment: z.enum(['positive', 'negative', 'neutral']),
+        relevanceScore: z.number().min(0).max(100),
+    })
+    .strict()
+
 type MacroSourceBundle = {
     fetchedAt: string
     expiresAt: string
@@ -96,6 +125,7 @@ type MacroSourceBundle = {
     finnhubTitles: string[]
     xTitles: string[]
     socialTitles: string[]
+    newsArticles: NewsArticle[]
     investingSnapshots: Partial<Record<keyof typeof INVESTING_MARKET_ENDPOINTS, InvestingSnapshot | null>>
 }
 
@@ -103,6 +133,10 @@ type ReportCacheEntry = {
     fetchedAt: string
     expiresAt: string
     report: MacroDeskReport
+}
+
+type MacroReportOptions = {
+    forceFresh?: boolean
 }
 
 const YAHOO_SYMBOLS = [
@@ -214,12 +248,13 @@ const RSS_HEADERS: HeadersInit = {
     Pragma: 'no-cache',
 }
 
-const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
+const SOURCE_CACHE_TTL_MS = 60 * 1000
 const REPORT_CACHE_TTL_MS = 90 * 1000
 const sourceCache = new Map<string, MacroSourceBundle>()
 const reportCache = new Map<string, ReportCacheEntry>()
 const inflightSourceFetches = new Map<string, Promise<MacroSourceBundle>>()
 const inflightReportFetches = new Map<string, Promise<ReportCacheEntry>>()
+let lastGoodNewsSnapshot: Pick<MacroSourceBundle, 'investingTitles' | 'myfxbookTitles' | 'alphaVantageTitles' | 'finnhubTitles' | 'xTitles' | 'socialTitles' | 'newsArticles'> | null = null
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 8000) {
     const controller = new AbortController()
@@ -229,6 +264,37 @@ async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 800
     } finally {
         clearTimeout(timeout)
     }
+}
+
+async function fetchWithRetry(
+    url: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number; retries?: number; retryDelayMs?: number },
+) {
+    const retries = options?.retries ?? 2
+    const timeoutMs = options?.timeoutMs ?? 8000
+    const retryDelayMs = options?.retryDelayMs ?? 250
+
+    let lastError: unknown = null
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+            const response = await fetchWithTimeout(url, init, timeoutMs)
+            if (response.ok) {
+                return response
+            }
+
+            lastError = new Error(`Request failed with status ${response.status}`)
+        } catch (error) {
+            lastError = error
+        }
+
+        if (attempt < retries) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (attempt + 1)))
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Request failed after retries.')
 }
 
 function headersWithReferer(
@@ -268,11 +334,127 @@ function fmtNum(value?: number, decimals = 2): string {
     return value.toFixed(decimals)
 }
 
+function parsePublishedAt(value: string | number | Date | null | undefined): Date {
+    if (value === null || value === undefined) return new Date()
+
+    const date = value instanceof Date ? value : new Date(value)
+    return Number.isNaN(date.getTime()) ? new Date() : date
+}
+
+function isWithinHours(publishedAt: Date, hours = 72): boolean {
+    return Date.now() - publishedAt.getTime() <= hours * 60 * 60 * 1000
+}
+
+function inferNewsSentiment(text: string): NewsSentiment {
+    const normalized = text.toLowerCase()
+    const positiveHits = ['beat', 'bullish', 'rally', 'growth', 'optimism', 'support', 'rate cut', 'cool inflation']
+    const negativeHits = ['selloff', 'bearish', 'slump', 'risk-off', 'miss', 'spike', 'inflation', 'hawkish']
+
+    const positiveScore = positiveHits.reduce((acc, keyword) => acc + (normalized.includes(keyword) ? 1 : 0), 0)
+    const negativeScore = negativeHits.reduce((acc, keyword) => acc + (normalized.includes(keyword) ? 1 : 0), 0)
+
+    if (positiveScore > negativeScore) return 'positive'
+    if (negativeScore > positiveScore) return 'negative'
+    return 'neutral'
+}
+
+function scoreNewsRelevance(text: string, publishedAt: Date): number {
+    const keywords = [
+        'xauusd', 'gold', 'bullion', 'dollar', 'dxy', 'usd', 'treasury', 'yield', 'yields',
+        'nasdaq', 's&p', 'sp500', 'wall street', 'stocks', 'equity', 'fed', 'fomc', 'ecb',
+        'boj', 'rates', 'inflation', 'nfp', 'cpi', 'pce', 'eurusd', 'gbpusd', 'usdjpy', 'risk',
+    ]
+
+    const normalized = text.toLowerCase()
+    const keywordScore = keywords.reduce((acc, keyword) => acc + (normalized.includes(keyword) ? 1 : 0), 0)
+    const recencyHours = Math.max(0, (Date.now() - publishedAt.getTime()) / (60 * 60 * 1000))
+    const recencyBonus = Math.max(0, 24 - recencyHours) / 24
+
+    return Math.min(100, Math.round(keywordScore * 18 + recencyBonus * 10))
+}
+
+function normalizeNewsArticle(article: {
+    title?: string | null
+    source?: string | null
+    publishedAt?: string | number | Date | null
+    summary?: string | null
+    sentiment?: NewsSentiment | null
+    relevanceScore?: number | null
+}): NewsArticle | null {
+    const title = article.title?.trim() || ''
+    const source = article.source?.trim() || ''
+    const summary = article.summary?.trim() || title
+    const publishedAt = parsePublishedAt(article.publishedAt)
+    const sentiment = article.sentiment || inferNewsSentiment(`${title} ${summary}`)
+    const relevanceScore = typeof article.relevanceScore === 'number' && Number.isFinite(article.relevanceScore)
+        ? Math.max(0, Math.min(100, Math.round(article.relevanceScore)))
+        : scoreNewsRelevance(`${title} ${summary}`, publishedAt)
+
+    const parsed = newsArticleSchema.safeParse({
+        title,
+        source,
+        publishedAt,
+        summary,
+        sentiment,
+        relevanceScore,
+    })
+
+    return parsed.success ? parsed.data : null
+}
+
+function isNewsArticle(article: NewsArticle | null): article is NewsArticle {
+    return article !== null
+}
+
+function dedupeNewsArticles(articles: NewsArticle[]): NewsArticle[] {
+    const seen = new Set<string>()
+
+    return articles.filter((article) => {
+        const key = `${article.source}|${article.title}`.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+    })
+}
+
+function rankNewsArticles(articles: NewsArticle[], limit = 10): NewsArticle[] {
+    return dedupeNewsArticles(
+        articles
+            .filter((article) => isWithinHours(article.publishedAt))
+            .map((article) => ({
+                article,
+                score: article.relevanceScore,
+                publishedAt: article.publishedAt.getTime(),
+            }))
+            .sort((left, right) => right.score - left.score || right.publishedAt - left.publishedAt)
+            .map((item) => item.article),
+    ).slice(0, limit)
+}
+
+function parseRssNewsItems(xml: string, source: string, limit = 8): NewsArticle[] {
+    const items = Array.from(xml.matchAll(/<item\b[\s\S]*?<\/item>/gi))
+        .map((match) => match[0])
+        .map((itemXml) => {
+            const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>|<title>([\s\S]*?)<\/title>/i)
+            const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/i)
+            const dateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)
+            const descriptionMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>|<description>([\s\S]*?)<\/description>/i)
+
+            return normalizeNewsArticle({
+                title: decodeHtmlEntities((titleMatch?.[1] || titleMatch?.[2] || '').replace(/<[^>]+>/g, '').trim()),
+                source,
+                publishedAt: dateMatch?.[1]?.trim() || undefined,
+                summary: decodeHtmlEntities((descriptionMatch?.[1] || descriptionMatch?.[2] || '').replace(/<[^>]+>/g, '').trim()),
+            })
+        })
+        .filter(isNewsArticle)
+        .filter((item) => item.title.length > 0 && !item.title.toLowerCase().includes('rss'))
+
+    return items.slice(0, limit)
+}
+
 function parseRssTitles(xml: string, limit = 5): string[] {
-    const titles = Array.from(xml.matchAll(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>|<title>([\s\S]*?)<\/title>/gi))
-        .map((match) => (match[1] || match[2] || '').trim())
-        .filter((title) => title && !title.toLowerCase().includes('rss'))
-    return titles.slice(0, limit)
+    return parseRssNewsItems(xml, 'RSS Feed', limit).map((item) => item.title)
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -285,21 +467,28 @@ function decodeHtmlEntities(value: string): string {
         .replace(/&gt;/g, '>')
 }
 
-function parseHtmlTitles(html: string, limit = 8): string[] {
+function parseHtmlNewsArticles(html: string, source: string, limit = 8): NewsArticle[] {
     const titles = Array.from(html.matchAll(/<title[^>]*>([\s\S]*?)<\/title>|<h2[^>]*>([\s\S]*?)<\/h2>|<h3[^>]*>([\s\S]*?)<\/h3>/gi))
         .map((match) => decodeHtmlEntities((match[1] || match[2] || match[3] || '').replace(/<[^>]+>/g, '').trim()))
         .filter((title) => title.length > 20)
-    return Array.from(new Set(titles)).slice(0, limit)
+
+    return Array.from(new Set(titles))
+        .slice(0, limit)
+        .map((title) =>
+            normalizeNewsArticle({
+                title,
+                source,
+                summary: title,
+                publishedAt: new Date(),
+            }),
+        )
+        .filter((item): item is NewsArticle => Boolean(item))
 }
 
-function uniqueNonEmptyTitles(titles: string[], limit = 8): string[] {
-    return Array.from(new Set(titles.map((title) => title.trim()).filter((title) => title.length > 12))).slice(0, limit)
-}
-
-async function fetchAlphaVantageNews(limit = 8): Promise<{ titles: string[]; health: SourceHealth }> {
+async function fetchAlphaVantageNews(limit = 8): Promise<NewsFetchResult> {
     const label = 'Alpha Vantage News'
     if (!ALPHA_VANTAGE_API_KEY) {
-        return { titles: [], health: { label, status: 'error' } }
+        return { articles: [], health: { label, status: 'error' } }
     }
 
     try {
@@ -307,7 +496,7 @@ async function fetchAlphaVantageNews(limit = 8): Promise<{ titles: string[]; hea
             `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=financial_markets` +
             `&sort=LATEST&limit=${encodeURIComponent(String(limit))}&apikey=${encodeURIComponent(ALPHA_VANTAGE_API_KEY)}`
 
-        const response = await fetchWithTimeout(
+        const response = await fetchWithRetry(
             endpoint,
             {
                 headers: {
@@ -315,37 +504,64 @@ async function fetchAlphaVantageNews(limit = 8): Promise<{ titles: string[]; hea
                     'User-Agent': MARKET_DATA_USER_AGENT,
                 },
             },
-            12000,
+            { timeoutMs: 12000, retries: 2, retryDelayMs: 300 },
         )
 
         if (!response.ok) {
-            return { titles: [], health: { label, status: 'error' } }
+            return { articles: [], health: { label, status: 'error' } }
         }
 
-        const payload = await response.json()
-        const rawTitles = Array.isArray(payload?.feed)
-            ? payload.feed.map((item: { title?: unknown }) => (typeof item?.title === 'string' ? item.title : ''))
+        const payload = (await response.json()) as {
+            feed?: Array<{
+                title?: unknown
+                summary?: unknown
+                source?: unknown
+                time_published?: unknown
+            }>
+        }
+        const articles = Array.isArray(payload.feed)
+            ? payload.feed
+                  .map((item: {
+                      title?: unknown
+                      summary?: unknown
+                      source?: unknown
+                      time_published?: unknown
+                  }): NewsArticle | null =>
+                      normalizeNewsArticle({
+                          title: typeof item?.title === 'string' ? item.title : '',
+                          summary: typeof item?.summary === 'string' ? item.summary : undefined,
+                          source: typeof item?.source === 'string' ? item.source : 'Alpha Vantage',
+                          publishedAt:
+                              typeof item?.time_published === 'string'
+                                  ? item.time_published.replace(
+                                        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/,
+                                        '$1-$2-$3T$4:$5:$6Z',
+                                    )
+                                  : undefined,
+                      }),
+                  )
+                .filter(isNewsArticle)
             : []
 
-        const titles = uniqueNonEmptyTitles(rawTitles, limit)
+        const selected = rankNewsArticles(articles, limit)
         return {
-            titles,
-            health: { label, status: titles.length > 0 ? 'ok' : 'empty' },
+            articles: selected,
+            health: { label, status: selected.length > 0 ? 'ok' : 'empty' },
         }
     } catch {
-        return { titles: [], health: { label, status: 'error' } }
+        return { articles: [], health: { label, status: 'error' } }
     }
 }
 
-async function fetchFinnhubNews(limit = 8): Promise<{ titles: string[]; health: SourceHealth }> {
+async function fetchFinnhubNews(limit = 8): Promise<NewsFetchResult> {
     const label = 'Finnhub News'
     if (!FINNHUB_API_KEY) {
-        return { titles: [], health: { label, status: 'error' } }
+        return { articles: [], health: { label, status: 'error' } }
     }
 
     try {
         const endpoint = `https://finnhub.io/api/v1/news?category=general&token=${encodeURIComponent(FINNHUB_API_KEY)}`
-        const response = await fetchWithTimeout(
+        const response = await fetchWithRetry(
             endpoint,
             {
                 headers: {
@@ -353,25 +569,44 @@ async function fetchFinnhubNews(limit = 8): Promise<{ titles: string[]; health: 
                     'User-Agent': MARKET_DATA_USER_AGENT,
                 },
             },
-            12000,
+            { timeoutMs: 12000, retries: 2, retryDelayMs: 300 },
         )
 
         if (!response.ok) {
-            return { titles: [], health: { label, status: 'error' } }
+            return { articles: [], health: { label, status: 'error' } }
         }
 
-        const payload = await response.json()
-        const rawTitles = Array.isArray(payload)
-            ? payload.map((item: { headline?: unknown }) => (typeof item?.headline === 'string' ? item.headline : ''))
+        const payload = (await response.json()) as Array<{
+            headline?: unknown
+            summary?: unknown
+            source?: unknown
+            datetime?: unknown
+        }>
+        const articles = Array.isArray(payload)
+            ? payload
+                  .map((item: {
+                      headline?: unknown
+                      summary?: unknown
+                      source?: unknown
+                      datetime?: unknown
+                  }): NewsArticle | null =>
+                      normalizeNewsArticle({
+                          title: typeof item?.headline === 'string' ? item.headline : '',
+                          summary: typeof item?.summary === 'string' ? item.summary : undefined,
+                          source: typeof item?.source === 'string' ? item.source : 'Finnhub',
+                          publishedAt: typeof item?.datetime === 'number' ? item.datetime * 1000 : undefined,
+                      }),
+                  )
+                .filter(isNewsArticle)
             : []
 
-        const titles = uniqueNonEmptyTitles(rawTitles, limit)
+        const selected = rankNewsArticles(articles, limit)
         return {
-            titles,
-            health: { label, status: titles.length > 0 ? 'ok' : 'empty' },
+            articles: selected,
+            health: { label, status: selected.length > 0 ? 'ok' : 'empty' },
         }
     } catch {
-        return { titles: [], health: { label, status: 'error' } }
+        return { articles: [], health: { label, status: 'error' } }
     }
 }
 
@@ -411,7 +646,7 @@ async function fetchHeadlineSource(
     url: string,
     mode: 'rss' | 'html' = 'rss',
     limit = 5,
-): Promise<{ titles: string[]; health: SourceHealth }> {
+): Promise<NewsFetchResult> {
     try {
         let headers: HeadersInit
 
@@ -431,33 +666,35 @@ async function fetchHeadlineSource(
             headers = BROWSER_NAV_HEADERS
         }
 
-        const response = await fetchWithTimeout(url, { headers }, 12000)
+        const response = await fetchWithRetry(url, { headers }, { timeoutMs: 12000, retries: 2, retryDelayMs: 250 })
         if (!response.ok) {
-            return { titles: [], health: { label, status: 'error' } }
+            return { articles: [], health: { label, status: 'error' } }
         }
 
         const body = await response.text()
         if (mode === 'html' && looksBlockedHtml(body)) {
-            return { titles: [], health: { label, status: 'blocked' } }
+            return { articles: [], health: { label, status: 'blocked' } }
         }
 
-        const titles = mode === 'rss' ? parseRssTitles(body, limit) : parseHtmlTitles(body, limit)
+        const articles = mode === 'rss' ? parseRssNewsItems(body, label, limit) : parseHtmlNewsArticles(body, label, limit)
+
         return {
-            titles,
-            health: { label, status: titles.length > 0 ? 'ok' : 'empty' },
+            articles,
+            health: { label, status: articles.length > 0 ? 'ok' : 'empty' },
         }
     } catch {
-        return { titles: [], health: { label, status: 'error' } }
+        return { articles: [], health: { label, status: 'error' } }
     }
 }
 
-async function fetchXFeedHeadlines(limit = 6): Promise<{ titles: string[]; health: SourceHealth }> {
+async function fetchXFeedHeadlines(limit = 6): Promise<NewsFetchResult> {
     let sawBlocked = false
     let sawError = false
+    const collected: NewsArticle[] = []
 
     for (const url of X_NEWS_RSS_URLS) {
         const result = await fetchHeadlineSource('X Feed', url, 'rss', limit)
-        if (result.titles.length > 0) {
+        if (result.articles.length > 0) {
             return result
         }
 
@@ -466,7 +703,7 @@ async function fetchXFeedHeadlines(limit = 6): Promise<{ titles: string[]; healt
     }
 
     return {
-        titles: [],
+        articles: collected,
         health: {
             label: 'X Feed',
             status: sawBlocked ? 'blocked' : sawError ? 'error' : 'empty',
@@ -1005,6 +1242,7 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         let finnhubTitles: string[] = []
         let xTitles: string[] = []
         let socialTitles: string[] = []
+        let newsArticles: NewsArticle[] = []
 
         if (quoteRes.status === 'fulfilled' && quoteRes.value.ok) {
             const payload = await quoteRes.value.json()
@@ -1033,7 +1271,8 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         }
 
         if (myfxbookRes.status === 'fulfilled') {
-            myfxbookTitles = myfxbookRes.value.titles
+            myfxbookTitles = myfxbookRes.value.articles.map((article) => article.title)
+            newsArticles.push(...myfxbookRes.value.articles)
             sourceHealth.push(myfxbookRes.value.health)
             if (myfxbookTitles.length > 0) {
                 sources.add('Myfxbook')
@@ -1041,7 +1280,8 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         }
 
         if (alphaVantageRes.status === 'fulfilled') {
-            alphaVantageTitles = alphaVantageRes.value.titles
+            alphaVantageTitles = alphaVantageRes.value.articles.map((article) => article.title)
+            newsArticles.push(...alphaVantageRes.value.articles)
             sourceHealth.push(alphaVantageRes.value.health)
             if (alphaVantageTitles.length > 0) {
                 sources.add('Alpha Vantage')
@@ -1049,7 +1289,8 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         }
 
         if (finnhubRes.status === 'fulfilled') {
-            finnhubTitles = finnhubRes.value.titles
+            finnhubTitles = finnhubRes.value.articles.map((article) => article.title)
+            newsArticles.push(...finnhubRes.value.articles)
             sourceHealth.push(finnhubRes.value.health)
             if (finnhubTitles.length > 0) {
                 sources.add('Finnhub')
@@ -1057,7 +1298,8 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         }
 
         if (xRes.status === 'fulfilled') {
-            xTitles = xRes.value.titles
+            xTitles = xRes.value.articles.map((article) => article.title)
+            newsArticles.push(...xRes.value.articles)
             sourceHealth.push(xRes.value.health)
             if (xTitles.length > 0) {
                 sources.add('X Feed')
@@ -1065,10 +1307,26 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         }
 
         if (redditRes.status === 'fulfilled') {
-            socialTitles = redditRes.value.titles
+            socialTitles = redditRes.value.articles.map((article) => article.title)
+            newsArticles.push(...redditRes.value.articles)
             sourceHealth.push(redditRes.value.health)
             if (socialTitles.length > 0) {
                 sources.add('Reddit')
+            }
+        }
+
+        const rankedNewsArticles = rankNewsArticles(newsArticles, 20)
+        const newsSnapshot = lastGoodNewsSnapshot && rankedNewsArticles.length === 0 ? lastGoodNewsSnapshot : null
+
+        if (rankedNewsArticles.length > 0) {
+            lastGoodNewsSnapshot = {
+                investingTitles,
+                myfxbookTitles,
+                alphaVantageTitles,
+                finnhubTitles,
+                xTitles,
+                socialTitles,
+                newsArticles: rankedNewsArticles,
             }
         }
 
@@ -1090,12 +1348,13 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             quotes,
             ffHighImpactCount,
             ffEvents,
-            investingTitles,
-            myfxbookTitles,
-            alphaVantageTitles,
-            finnhubTitles,
-            xTitles,
-            socialTitles,
+            investingTitles: newsSnapshot?.investingTitles || investingTitles,
+            myfxbookTitles: newsSnapshot?.myfxbookTitles || myfxbookTitles,
+            alphaVantageTitles: newsSnapshot?.alphaVantageTitles || alphaVantageTitles,
+            finnhubTitles: newsSnapshot?.finnhubTitles || finnhubTitles,
+            xTitles: newsSnapshot?.xTitles || xTitles,
+            socialTitles: newsSnapshot?.socialTitles || socialTitles,
+            newsArticles: newsSnapshot?.newsArticles || rankedNewsArticles,
             investingSnapshots,
         }
 
@@ -1112,7 +1371,11 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
     }
 }
 
-async function generateMacroReport(checklistScore: number, intendedTrade?: string | null): Promise<ReportCacheEntry> {
+async function generateMacroReport(
+    checklistScore: number,
+    intendedTrade?: string | null,
+    options?: MacroReportOptions,
+): Promise<ReportCacheEntry> {
     const sourceBundle = await fetchMacroSourceBundle()
 
     const {
@@ -1126,6 +1389,7 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         xTitles,
         socialTitles,
         investingSnapshots,
+        newsArticles,
     } = sourceBundle
 
     const dxy = safeQuote(quotes, 'DX-Y.NYB')
@@ -1144,16 +1408,11 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
     const oilSnapshot = investingSnapshots.oil
 
     const relevantHeadlines = selectRelevantHeadlines(
-        [
-            ...investingTitles,
-            ...myfxbookTitles,
-            ...alphaVantageTitles,
-            ...finnhubTitles,
-            ...xTitles,
-        ],
+        [...investingTitles, ...myfxbookTitles, ...alphaVantageTitles, ...finnhubTitles, ...xTitles],
         10,
     )
     const socialSentiment = scoreHeadlineTone(socialTitles)
+    const normalizedNewsTitles = newsArticles.map((article) => article.title)
 
     const marketData: MarketData = {
         dxy: {
@@ -1172,7 +1431,8 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         sp500: sp500Snapshot?.value ?? spx.regularMarketPrice ?? 0,
         nasdaq: nasdaqSnapshot?.value ?? ndx.regularMarketPrice ?? 0,
         oil_price: oilSnapshot?.value ?? oil.regularMarketPrice ?? 0,
-        news: relevantHeadlines.slice(0, 8),
+        news: normalizedNewsTitles.length > 0 ? normalizedNewsTitles.slice(0, 8) : relevantHeadlines.slice(0, 8),
+        newsArticles: newsArticles.slice(0, 8),
         economic_events: ffEvents.slice(0, 8),
         social_sentiment: socialSentiment,
     }
@@ -1233,17 +1493,21 @@ async function generateMacroReport(checklistScore: number, intendedTrade?: strin
         report.sources.push(...sourceStatusSummary)
     }
 
-    const reportWindow = buildCacheWindow(REPORT_CACHE_TTL_MS)
+    const reportWindow = buildCacheWindow(options?.forceFresh ? SOURCE_CACHE_TTL_MS : REPORT_CACHE_TTL_MS)
     return {
         ...reportWindow,
         report,
     }
 }
 
-export async function getMacroReport(checklistScore: number, intendedTrade?: string | null): Promise<MacroDeskReport> {
+export async function getMacroReport(
+    checklistScore: number,
+    intendedTrade?: string | null,
+    options?: MacroReportOptions,
+): Promise<MacroDeskReport> {
     const cacheKey = reportCacheKey(checklistScore, intendedTrade)
     const cached = reportCache.get(cacheKey)
-    if (cached && isCacheValid(cached.expiresAt)) {
+    if (!options?.forceFresh && cached && isCacheValid(cached.expiresAt)) {
         return {
             ...cached.report,
             cache: {
@@ -1254,7 +1518,7 @@ export async function getMacroReport(checklistScore: number, intendedTrade?: str
         }
     }
 
-    const inflight = inflightReportFetches.get(cacheKey)
+    const inflight = !options?.forceFresh ? inflightReportFetches.get(cacheKey) : null
     if (inflight) {
         const shared = await inflight
         return {
@@ -1267,15 +1531,21 @@ export async function getMacroReport(checklistScore: number, intendedTrade?: str
         }
     }
 
-    const reportPromise = generateMacroReport(checklistScore, intendedTrade)
-    inflightReportFetches.set(cacheKey, reportPromise)
+    const reportPromise = generateMacroReport(checklistScore, intendedTrade, options)
+    if (!options?.forceFresh) {
+        inflightReportFetches.set(cacheKey, reportPromise)
+    }
 
     try {
         const entry = await reportPromise
-        reportCache.set(cacheKey, entry)
+        if (!options?.forceFresh) {
+            reportCache.set(cacheKey, entry)
+        }
         return entry.report
     } finally {
-        inflightReportFetches.delete(cacheKey)
+        if (!options?.forceFresh) {
+            inflightReportFetches.delete(cacheKey)
+        }
     }
 }
 
@@ -1325,7 +1595,8 @@ export async function GET(request: Request) {
         const url = new URL(request.url)
         const checklistScore = clamp(Number(url.searchParams.get('score') || 7), 0, 10)
         const intendedTrade = url.searchParams.get('trade')
-        const report = await getMacroReport(checklistScore, intendedTrade)
+        const forceFresh = url.searchParams.get('fresh') === '1' || url.searchParams.get('fresh') === 'true'
+        const report = await getMacroReport(checklistScore, intendedTrade, { forceFresh })
 
         return NextResponse.json(
             { result: report },
