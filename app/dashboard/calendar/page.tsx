@@ -15,13 +15,12 @@ import Link from 'next/link'
 interface TradeRow {
     id: string
     pair: string
-    trade_date: string | null
     created_at: string
     result: 'win' | 'loss' | 'breakeven' | 'pending' | null
     rr: number | null
     risk_amount: number | null
     setup_grade: string | null
-    ai_recommendation: 'CONFIRM' | 'WAIT' | 'INVALID' | null
+    ai_recommendation: string | null
     entry: number | null
     sl: number | null
     tp: number | null
@@ -55,12 +54,17 @@ export default function CalendarPage() {
             const start = format(startOfMonth(month), 'yyyy-MM-dd')
             const end = format(endOfMonth(month), 'yyyy-MM-dd')
 
-            const [{ data: trades }, { data: eventRows }] = await Promise.all([
+            const [{ data: executions }, { data: preTrades }, { data: eventRows }] = await Promise.all([
                 supabase
-                    .from('trades')
-                    .select('id, pair, trade_date, created_at, result, rr, risk_amount, setup_grade, ai_recommendation, entry, sl, tp')
-                    .or(`trade_date.gte.${start},created_at.gte.${start}`)
-                    .or(`trade_date.lte.${end},created_at.lte.${end}`),
+                    .from('executions')
+                    .select('id, pre_trade_id, created_at, executed_at, closed_at, entry, stop_loss, take_profit, risk_percent, position_size, status')
+                    .gte('created_at', start)
+                    .lte('created_at', end + 'T23:59:59'),
+                supabase
+                    .from('pre_trades')
+                    .select('id, pair, created_at, final_score, ai_verdict')
+                    .gte('created_at', start)
+                    .lte('created_at', end + 'T23:59:59'),
                 supabase
                     .from('economic_events')
                     .select('id, title, impact, event_date, event_time')
@@ -68,13 +72,47 @@ export default function CalendarPage() {
                     .lte('event_date', end),
             ])
 
+            const executionIds = ((executions || []) as { id: string }[]).map((row) => row.id)
+            const { data: metrics } = executionIds.length
+                ? await supabase
+                    .from('trade_metrics')
+                    .select('execution_id, rr_ratio, pnl, win_loss')
+                    .in('execution_id', executionIds)
+                : { data: [] }
+
             setEvents((eventRows || []) as EconomicEvent[])
 
+            const preTradeMap = new Map(((preTrades || []) as { id: string; pair: string; final_score: number | null; ai_verdict: string }[]).map((row) => [row.id, row]))
+            const metricMap = new Map(((metrics || []) as { execution_id: string; rr_ratio: number; pnl: number; win_loss: 'win' | 'loss' | 'breakeven' }[]).map((row) => [row.execution_id, row]))
+
             const grouped = new Map<string, TradeRow[]>()
-            for (const trade of (trades || []) as TradeRow[]) {
-                const key = trade.trade_date || trade.created_at.slice(0, 10)
+            for (const execution of (executions || []) as { id: string; pre_trade_id: string; created_at: string; executed_at: string; closed_at: string | null; entry: number; stop_loss: number; take_profit: number; status: string }[]) {
+                const preTrade = preTradeMap.get(execution.pre_trade_id)
+                const metric = metricMap.get(execution.id)
+                const key = (execution.closed_at || execution.executed_at || execution.created_at).slice(0, 10)
                 const list = grouped.get(key) || []
-                list.push(trade)
+                list.push({
+                    id: execution.id,
+                    pair: preTrade?.pair || 'UNKNOWN',
+                    created_at: execution.closed_at || execution.executed_at || execution.created_at,
+                    result: metric?.win_loss || 'pending',
+                    rr: metric?.rr_ratio ?? null,
+                    risk_amount: Math.abs(execution.entry - execution.stop_loss) * 100,
+                    setup_grade:
+                        preTrade?.final_score && preTrade.final_score >= 0.9
+                            ? 'A+'
+                            : preTrade?.final_score && preTrade.final_score >= 0.84
+                                ? 'A'
+                                : preTrade?.final_score && preTrade.final_score >= 0.76
+                                    ? 'A-'
+                                    : preTrade?.final_score && preTrade.final_score >= 0.65
+                                        ? 'B'
+                                        : 'F',
+                    ai_recommendation: preTrade?.ai_verdict || null,
+                    entry: execution.entry,
+                    sl: execution.stop_loss,
+                    tp: execution.take_profit,
+                })
                 grouped.set(key, list)
             }
 
@@ -111,12 +149,52 @@ export default function CalendarPage() {
     useEffect(() => {
         if (!selectedDate) { setSelectedTrades([]); return }
         const loadSelected = async () => {
-            const { data } = await supabase
-                .from('trades')
-                .select('id, pair, trade_date, created_at, result, rr, risk_amount, setup_grade, ai_recommendation, entry, sl, tp')
-                .or(`trade_date.eq.${selectedDate},and(trade_date.is.null,created_at.gte.${selectedDate},created_at.lt.${selectedDate}T23:59:59)`)
+            const { data: executions } = await supabase
+                .from('executions')
+                .select('id, pre_trade_id, created_at, executed_at, closed_at, entry, stop_loss, take_profit, status')
+                .gte('created_at', `${selectedDate}T00:00:00`)
+                .lte('created_at', `${selectedDate}T23:59:59`)
                 .order('created_at', { ascending: false })
-            setSelectedTrades((data || []) as TradeRow[])
+
+            const { data: preTrades } = await supabase
+                .from('pre_trades')
+                .select('id, pair, final_score, ai_verdict')
+                .in('id', ((executions || []) as { pre_trade_id: string }[]).map((row) => row.pre_trade_id))
+
+            const { data: metrics } = await supabase
+                .from('trade_metrics')
+                .select('execution_id, rr_ratio, pnl, win_loss')
+                .in('execution_id', ((executions || []) as { id: string }[]).map((row) => row.id))
+
+            const preTradeMap = new Map(((preTrades || []) as { id: string; pair: string; final_score: number | null; ai_verdict: string }[]).map((row) => [row.id, row]))
+            const metricMap = new Map(((metrics || []) as { execution_id: string; rr_ratio: number; pnl: number; win_loss: 'win' | 'loss' | 'breakeven' }[]).map((row) => [row.execution_id, row]))
+
+            setSelectedTrades(((executions || []) as { id: string; pre_trade_id: string; created_at: string; executed_at: string; closed_at: string | null; entry: number; stop_loss: number; take_profit: number; status: string }[]).map((execution) => {
+                const preTrade = preTradeMap.get(execution.pre_trade_id)
+                const metric = metricMap.get(execution.id)
+                return {
+                    id: execution.id,
+                    pair: preTrade?.pair || 'UNKNOWN',
+                    created_at: execution.closed_at || execution.executed_at || execution.created_at,
+                    result: metric?.win_loss || 'pending',
+                    rr: metric?.rr_ratio ?? null,
+                    risk_amount: Math.abs(execution.entry - execution.stop_loss) * 100,
+                    setup_grade:
+                        preTrade?.final_score && preTrade.final_score >= 0.9
+                            ? 'A+'
+                            : preTrade?.final_score && preTrade.final_score >= 0.84
+                                ? 'A'
+                                : preTrade?.final_score && preTrade.final_score >= 0.76
+                                    ? 'A-'
+                                    : preTrade?.final_score && preTrade.final_score >= 0.65
+                                        ? 'B'
+                                        : 'F',
+                    ai_recommendation: preTrade?.ai_verdict || null,
+                    entry: execution.entry,
+                    sl: execution.stop_loss,
+                    tp: execution.take_profit,
+                }
+            }))
         }
         loadSelected()
     }, [selectedDate])
