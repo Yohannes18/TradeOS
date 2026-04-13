@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 
 const QUICK_PAIRS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USTEC100', 'US500', 'USDJPY']
 
@@ -28,7 +27,7 @@ export function QuickAddTrade({ userId, accountBalance, riskPercent }: QuickAddT
     const [direction, setDirection] = useState<'buy' | 'sell'>('buy')
     const [isPending, startTransition] = useTransition()
     const router = useRouter()
-    const supabase = createClient()
+    void userId
 
     const riskAmount = (accountBalance * riskPercent) / 100
     const entryN = parseFloat(entry) || 0
@@ -44,27 +43,72 @@ export function QuickAddTrade({ userId, accountBalance, riskPercent }: QuickAddT
             return
         }
         startTransition(async () => {
-            const { error } = await supabase.from('trades').insert({
-                user_id: userId,
-                pair,
-                direction,
-                entry: entryN,
-                sl: slN,
-                tp: tpN || null,
-                rr: rr || null,
-                risk_amount: riskAmount,
-                result: 'pending',
-                trade_date: new Date().toISOString().slice(0, 10),
-                created_at: new Date().toISOString(),
+            const preTradeResponse = await fetch('/api/pre-trade', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    pair,
+                    entry: entryN,
+                    stop_loss: slN,
+                    take_profit: tpN || entryN + Math.abs(entryN - slN) * 2,
+                    risk_percent: riskPercent,
+                    checklist: {
+                        setup: {
+                            thesisClear: true,
+                            trendAligned: true,
+                            liquidityMapped: true,
+                            riskDefined: true,
+                            rrAcceptable: rr >= 1,
+                            sessionAligned: true,
+                            newsClear: true,
+                            disciplineReady: true,
+                        },
+                        aiContext: {
+                            confidence: 0.85,
+                            structureAlignment: direction === 'buy' ? 'aligned' : 'mixed',
+                            regime: 'trend',
+                        },
+                        macroContext: {
+                            biasAlignment: 'aligned',
+                            eventRisk: 'low',
+                            volatility: 'normal',
+                            sessionQuality: 'good',
+                        },
+                        notes: 'Quick add trade.',
+                    },
+                }),
             })
-            if (error) {
-                toast.error('Failed to log trade')
+
+            if (!preTradeResponse.ok) {
+                const payload = await preTradeResponse.json().catch(() => null)
+                toast.error(payload?.error || 'Failed to create pre-trade')
                 return
             }
-            toast.success(`${pair} trade logged — set result in Journal`)
+
+            const preTradePayload = await preTradeResponse.json()
+
+            const executionResponse = await fetch('/api/execution', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({ preTradeId: preTradePayload.preTrade.id }),
+            })
+
+            if (!executionResponse.ok) {
+                const payload = await executionResponse.json().catch(() => null)
+                toast.error(payload?.error || 'Failed to create execution')
+                return
+            }
+
+            toast.success(`${pair} trade logged — review it in Journal`)
             setOpen(false)
             setEntry(''); setSl(''); setTp('')
-            router.refresh()
+            router.push('/dashboard/journal')
         })
     }
 
