@@ -3,31 +3,65 @@ import { getAuthenticatedUser } from '@/lib/auth/server-user'
 import { redirect } from 'next/navigation'
 import { CommunityHub } from '@/components/dashboard/community-hub'
 
+interface ExecutionRow {
+    id: string
+    user_id: string
+    pre_trade_id: string
+    created_at: string
+}
+
+interface PreTradeRow {
+    id: string
+    user_id: string
+    final_score: number | null
+}
+
+interface MetricRow {
+    execution_id: string
+    rr_ratio: number
+    win_loss: 'win' | 'loss' | 'breakeven'
+}
+
 export default async function CommunityPage() {
     const user = await getAuthenticatedUser()
     if (!user) redirect('/auth/login')
 
     const supabase = await createClient()
 
-    // Fetch anonymized leaderboard data
-    const { data: leaderboard } = await supabase
-        .from('trades')
-        .select('user_id, result, rr, setup_grade, created_at')
-        .not('result', 'eq', 'pending')
+    const { data: executions } = await supabase
+        .from('executions')
+        .select('id, user_id, pre_trade_id, created_at')
         .order('created_at', { ascending: false })
         .limit(500)
 
+    const { data: preTrades } = await supabase
+        .from('pre_trades')
+        .select('id, user_id, final_score')
+        .in('id', ((executions || []) as ExecutionRow[]).map((row) => row.pre_trade_id))
+
+    const { data: metrics } = await supabase
+        .from('trade_metrics')
+        .select('execution_id, rr_ratio, win_loss')
+        .in('execution_id', ((executions || []) as ExecutionRow[]).map((row) => row.id))
+
+    const preTradeMap = new Map(((preTrades || []) as PreTradeRow[]).map((row) => [row.id, row]))
+    const metricMap = new Map(((metrics || []) as MetricRow[]).map((row) => [row.execution_id, row]))
+
     const userStats: Record<string, { wins: number; total: number; rr: number[]; grade: string[] }> = {}
 
-    for (const trade of leaderboard || []) {
-        if (!userStats[trade.user_id]) {
-            userStats[trade.user_id] = { wins: 0, total: 0, rr: [], grade: [] }
+    for (const execution of (executions || []) as ExecutionRow[]) {
+        const metric = metricMap.get(execution.id)
+        const preTrade = preTradeMap.get(execution.pre_trade_id)
+        const userId = execution.user_id
+
+        if (!userStats[userId]) {
+            userStats[userId] = { wins: 0, total: 0, rr: [], grade: [] }
         }
-        const u = userStats[trade.user_id]
+        const u = userStats[userId]
         u.total++
-        if (trade.result === 'win') u.wins++
-        if (trade.rr) u.rr.push(trade.rr)
-        if (trade.setup_grade) u.grade.push(trade.setup_grade)
+        if (metric?.win_loss === 'win') u.wins++
+        if (metric?.rr_ratio) u.rr.push(metric.rr_ratio)
+        if (preTrade?.final_score) u.grade.push(preTrade.final_score >= 0.9 ? 'A+' : preTrade.final_score >= 0.84 ? 'A' : preTrade.final_score >= 0.76 ? 'A-' : preTrade.final_score >= 0.65 ? 'B' : 'F')
     }
 
     const ranked = Object.entries(userStats)
