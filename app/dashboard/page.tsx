@@ -5,16 +5,29 @@ import { ProfessionalDashboard } from '@/components/dashboard/professional-dashb
 import type { ProfessionalCalendarDay } from '@/components/dashboard/professional-calendar'
 import type { ChecklistStatus } from '@/lib/trading/types'
 import { getMacroReport } from '@/app/api/macro-brief/route'
+import { getCachedTradingAnalytics } from '@/lib/services/analytics-service'
 
-interface TradeRow {
+interface ExecutionRow {
+    id: string
+    pre_trade_id: string
+    pair: string
+    created_at: string
+    executed_at: string
+    closed_at: string | null
+    entry: number
+    stop_loss: number
+    take_profit: number
+    risk_percent: number
+    position_size: number
+    status: 'executed' | 'closed'
+}
+
+interface PreTradeRow {
     id: string
     pair: string
     created_at: string
-    result?: 'win' | 'loss' | 'breakeven' | 'pending' | null
-    rr?: number | null
-    setup_grade?: string | null
-    ai_recommendation?: string | null
-    risk_amount?: number | null
+    final_score: number
+    ai_verdict: string
 }
 
 interface DailySummaryRow {
@@ -32,40 +45,89 @@ export default async function DashboardPage() {
 
     const supabase = await createClient()
 
-    const [{ data: trades }, { data: summaries }, macroReport] = await Promise.all([
+    const [{ data: settings }, { data: executions }, { data: preTrades }, analytics, macroReport] = await Promise.all([
         supabase
-            .from('trades')
-            .select('id, pair, created_at, result, rr, setup_grade, ai_recommendation, risk_amount')
+            .from('settings')
+            .select('risk_percent, account_balance, default_pair')
+            .eq('user_id', user.id)
+            .single(),
+        supabase
+            .from('executions')
+            .select('id, pre_trade_id, created_at, executed_at, closed_at, entry, stop_loss, take_profit, risk_percent, position_size, status')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(120),
         supabase
-            .from('daily_summary')
-            .select('summary_date, trade_count, net_pl, r_multiple, win_rate, top_setup')
+            .from('pre_trades')
+            .select('id, pair, created_at, final_score, ai_verdict')
             .eq('user_id', user.id)
-            .order('summary_date', { ascending: false })
-            .limit(90),
+            .order('created_at', { ascending: false })
+            .limit(120),
+        getCachedTradingAnalytics(user.id),
         getMacroReport(8, 'XAUUSD'),
     ])
 
-    const rows = (trades || []) as TradeRow[]
+    const preTradeMap = new Map(((preTrades || []) as PreTradeRow[]).map((row) => [row.id, row]))
+    const executionIds = ((executions || []) as ExecutionRow[]).map((row) => row.id)
+    const { data: metrics } = executionIds.length
+        ? await supabase
+            .from('trade_metrics')
+            .select('execution_id, rr_ratio, pnl, win_loss')
+            .in('execution_id', executionIds)
+        : { data: [] }
+    const metricsMap = new Map(((metrics || []) as { execution_id: string; rr_ratio: number; pnl: number; win_loss: 'win' | 'loss' | 'breakeven' }[]).map((row) => [row.execution_id, row]))
+    const rows = ((executions || []) as ExecutionRow[]).map((execution) => {
+        const preTrade = preTradeMap.get(execution.pre_trade_id)
+        const metric = metricsMap.get(execution.id)
+        return {
+            id: execution.id,
+            pair: preTrade?.pair || 'UNKNOWN',
+            created_at: execution.closed_at || execution.executed_at || execution.created_at,
+            result: metric?.win_loss || (execution.status === 'closed' ? 'breakeven' : 'pending'),
+            rr: metric?.rr_ratio ?? null,
+            setup_grade:
+                preTrade?.final_score && preTrade.final_score >= 0.9
+                    ? 'A+'
+                    : preTrade?.final_score && preTrade.final_score >= 0.84
+                        ? 'A'
+                        : preTrade?.final_score && preTrade.final_score >= 0.76
+                            ? 'A-'
+                            : preTrade?.final_score && preTrade.final_score >= 0.65
+                                ? 'B'
+                                : 'F',
+            ai_recommendation: preTrade?.ai_verdict || 'STANDBY',
+            risk_amount: Number(settings?.account_balance || 10000) * Number(execution.risk_percent || settings?.risk_percent || 1) / 100,
+        }
+    })
+
     const completed = rows.filter((row) => row.result && row.result !== 'pending')
-    const wins = completed.filter((row) => row.result === 'win').length
-    const losses = completed.filter((row) => row.result === 'loss').length
-    const winRate = completed.length ? Math.round((wins / completed.length) * 100) : 0
-    const profitFactor = losses ? (wins / losses).toFixed(2) : wins ? '∞' : '0.00'
+    const winRate = Math.round(Number(analytics.winRate || 0) * 100)
+    const profitFactor = completed.length ? (Number(analytics.netPnl || 0) >= 0 ? '1.00' : '0.00') : '0.00'
 
     const bestSetup = rows.find((row) => row.setup_grade)?.setup_grade || 'N/A'
 
-    const calendarData: ProfessionalCalendarDay[] = ((summaries || []) as DailySummaryRow[]).map((row) => ({
-        date: row.summary_date,
-        netPnl: Number(row.net_pl || 0),
-        trades: Number(row.trade_count || 0),
-        rMultiple: Number(row.r_multiple || 0),
-        winRate: Number(row.win_rate || 0),
-        topSetup: row.top_setup || undefined,
-        recommendation: row.net_pl > 0 ? 'CONFIRM' : row.net_pl < 0 ? 'WAIT' : 'INVALID',
-    }))
+    const dayBuckets = new Map<string, typeof rows>()
+    for (const trade of rows) {
+        const key = trade.created_at.slice(0, 10)
+        const bucket = dayBuckets.get(key) || []
+        bucket.push(trade)
+        dayBuckets.set(key, bucket)
+    }
+
+    const calendarData: ProfessionalCalendarDay[] = Array.from(dayBuckets.entries()).map(([date, trades]) => {
+        const completedTrades = trades.filter((trade) => trade.result && trade.result !== 'pending')
+        const wins = completedTrades.filter((trade) => trade.result === 'win').length
+        const netPnl = completedTrades.reduce((sum, trade) => sum + (trade.result === 'win' ? Number(trade.risk_amount || 0) : trade.result === 'loss' ? -Number(trade.risk_amount || 0) : 0), 0)
+        return {
+            date,
+            netPnl,
+            trades: trades.length,
+            rMultiple: completedTrades.length,
+            winRate: completedTrades.length ? (wins / completedTrades.length) * 100 : 0,
+            topSetup: trades.find((trade) => trade.setup_grade)?.setup_grade || undefined,
+            recommendation: netPnl > 0 ? 'CONFIRM' : netPnl < 0 ? 'WAIT' : 'INVALID',
+        }
+    }).sort((a, b) => b.date.localeCompare(a.date))
 
     const metrics = [
         { label: 'Win Rate', value: `${winRate}%`, tone: 'profit' as const, sparkline: [8, 10, 9, 13, 14, 11, 15] },
