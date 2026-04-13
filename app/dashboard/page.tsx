@@ -69,13 +69,13 @@ export default async function DashboardPage() {
 
     const preTradeMap = new Map(((preTrades || []) as PreTradeRow[]).map((row) => [row.id, row]))
     const executionIds = ((executions || []) as ExecutionRow[]).map((row) => row.id)
-    const { data: metrics } = executionIds.length
+    const { data: tradeMetricsRows } = executionIds.length
         ? await supabase
             .from('trade_metrics')
             .select('execution_id, rr_ratio, pnl, win_loss')
             .in('execution_id', executionIds)
         : { data: [] }
-    const metricsMap = new Map(((metrics || []) as { execution_id: string; rr_ratio: number; pnl: number; win_loss: 'win' | 'loss' | 'breakeven' }[]).map((row) => [row.execution_id, row]))
+    const metricsMap = new Map(((tradeMetricsRows || []) as { execution_id: string; rr_ratio: number; pnl: number; win_loss: 'win' | 'loss' | 'breakeven' }[]).map((row) => [row.execution_id, row]))
     const rows = ((executions || []) as ExecutionRow[]).map((execution) => {
         const preTrade = preTradeMap.get(execution.pre_trade_id)
         const metric = metricsMap.get(execution.id)
