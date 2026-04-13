@@ -74,14 +74,15 @@ export function AIAnalysisPanel({ symbol, checklist, onChange }: AIAnalysisPanel
                 body: JSON.stringify({ symbol, checklist }),
             })
             const data = await res.json()
-            if (data.success && data.analysis) {
-                setAnalysis(data.analysis)
-                onChange?.(data.analysis.verdict, data.analysis.bias, data.analysis.confidence)
-            } else {
-                setAnalysis(data.analysis)
+            if (!res.ok || !data.success || !data.analysis) {
+                throw new Error(data?.error || 'Provider-backed AI analysis is unavailable.')
             }
+
+            setAnalysis(data.analysis)
+            onChange?.(data.analysis.verdict, data.analysis.bias, data.analysis.confidence)
         } catch {
-            setError('Failed to reach AI. Using fallback mode.')
+            setAnalysis(null)
+            setError('Failed to fetch provider-backed AI analysis.')
         } finally {
             setLoading(false)
         }
@@ -225,7 +226,7 @@ export function AIAnalysisPanel({ symbol, checklist, onChange }: AIAnalysisPanel
                         </div>
 
                         <p className="text-center text-xs text-muted-foreground/60">
-                            Powered by Claude · Not financial advice
+                            Provider-backed analysis · Not financial advice
                         </p>
                     </>
                 )}
