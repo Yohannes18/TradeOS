@@ -46,3 +46,16 @@ export class DatabaseError extends Error {
     this.name = 'DatabaseError'
   }
 }
+
+// Backward-compatible error class used across existing API/service layers.
+export class ApiError extends Error {
+  public readonly status: number
+  public readonly details?: unknown
+
+  constructor(status: number, message: string, details?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.details = details
+  }
+}
