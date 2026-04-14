@@ -33,6 +33,18 @@ interface MetricRow {
     win_loss: 'win' | 'loss' | 'breakeven'
 }
 
+type PerformanceBucket = {
+    period: string
+    winRate: number
+    total: number
+}
+
+const SESSION_LABELS = {
+    london: 'London',
+    ny: 'New York',
+    asia: 'Asia',
+} as const
+
 export default async function AnalyticsPage() {
     const user = await getAuthenticatedUser()
 
@@ -134,12 +146,19 @@ export default async function AnalyticsPage() {
     const bestGrade = byScore.a.length ? 'A+' : byScore.b.length ? 'B' : 'C'
     const edgeScore = Math.round((winRate * 0.4) + (parseFloat(avgRRValue) * 15) + (parseFloat(expectancy) * 10))
 
-    const performanceByDay = []
-    const performanceByMonth = []
-    const performanceByQuarter = []
+    const performanceByDay: PerformanceBucket[] = []
+    const performanceByMonth: PerformanceBucket[] = []
+    const performanceByQuarter: PerformanceBucket[] = []
     const streaks = { maxWin: 0, maxLoss: 0 }
-    const highestProfitTrade: { pair: string; pl: number } | null = null
-    const largestLossTrade: { pair: string; pl: number } | null = null
+    const tradesWithPnl = completed.filter((trade): trade is (typeof completed)[number] & { pl: number } =>
+        typeof trade.pl === 'number',
+    )
+    const highestProfitTrade = tradesWithPnl.length
+        ? tradesWithPnl.reduce((best, trade) => (trade.pl > best.pl ? trade : best))
+        : null
+    const largestLossTrade = tradesWithPnl.length
+        ? tradesWithPnl.reduce((worst, trade) => (trade.pl < worst.pl ? trade : worst))
+        : null
     const london: typeof completed = []
     const ny: typeof completed = []
     const asia: typeof completed = []
