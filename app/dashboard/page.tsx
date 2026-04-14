@@ -45,7 +45,7 @@ export default async function DashboardPage() {
 
     const supabase = await createClient()
 
-    const [{ data: settings }, { data: executions }, { data: preTrades }, analytics, macroReport] = await Promise.all([
+    const [{ data: settings }, { data: executions }, { data: preTrades }, analyticsResult, macroReportResult] = await Promise.all([
         supabase
             .from('settings')
             .select('risk_percent, account_balance, default_pair')
@@ -63,9 +63,48 @@ export default async function DashboardPage() {
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(120),
-        getCachedTradingAnalytics(user.id),
-        getMacroReport(8, 'XAUUSD'),
+        getCachedTradingAnalytics(user.id)
+            .then((value) => ({ ok: true as const, value }))
+            .catch((error) => {
+                console.error('[dashboard] analytics fallback:', error)
+                return { ok: false as const }
+            }),
+        getMacroReport(8, 'XAUUSD')
+            .then((value) => ({ ok: true as const, value }))
+            .catch((error) => {
+                console.error('[dashboard] macro brief fallback:', error)
+                return { ok: false as const }
+            }),
     ])
+
+    const analytics = analyticsResult.ok
+        ? analyticsResult.value
+        : {
+            openExecutions: 0,
+            closedExecutions: 0,
+            journalsCompleted: 0,
+            winRate: 0,
+            netPnl: 0,
+            averageRr: 0,
+            averageAdherence: 0,
+        }
+
+    const macroSummary = macroReportResult.ok
+        ? {
+            aiBias: `${macroReportResult.value.aiDecision.goldBias} gold / ${macroReportResult.value.aiDecision.indicesBias} indices`,
+            alert:
+                macroReportResult.value.marketData.economic_events[0] ||
+                macroReportResult.value.riskFactors[0] ||
+                'No active alert.',
+            plan:
+                macroReportResult.value.tradeImplication.whatToDo[0] ||
+                'Stay selective and wait for aligned confirmation.',
+        }
+        : {
+            aiBias: 'Neutral gold / Neutral indices',
+            alert: 'Macro brief temporarily unavailable.',
+            plan: 'Proceed with your checklist and risk rules until macro feed recovers.',
+        }
 
     const preTradeMap = new Map(((preTrades || []) as PreTradeRow[]).map((row) => [row.id, row]))
     const executionIds = ((executions || []) as ExecutionRow[]).map((row) => row.id)
@@ -118,6 +157,8 @@ export default async function DashboardPage() {
         const completedTrades = trades.filter((trade) => trade.result && trade.result !== 'pending')
         const wins = completedTrades.filter((trade) => trade.result === 'win').length
         const netPnl = completedTrades.reduce((sum, trade) => sum + (trade.result === 'win' ? Number(trade.risk_amount || 0) : trade.result === 'loss' ? -Number(trade.risk_amount || 0) : 0), 0)
+        const recommendation: ProfessionalCalendarDay['recommendation'] =
+            netPnl > 0 ? 'CONFIRM' : netPnl < 0 ? 'WAIT' : 'INVALID'
         return {
             date,
             netPnl,
@@ -125,7 +166,7 @@ export default async function DashboardPage() {
             rMultiple: completedTrades.length,
             winRate: completedTrades.length ? (wins / completedTrades.length) * 100 : 0,
             topSetup: trades.find((trade) => trade.setup_grade)?.setup_grade || undefined,
-            recommendation: netPnl > 0 ? 'CONFIRM' : netPnl < 0 ? 'WAIT' : 'INVALID',
+            recommendation,
         }
     }).sort((a, b) => b.date.localeCompare(a.date))
 
@@ -146,11 +187,7 @@ export default async function DashboardPage() {
             trades={rows}
             score={score}
             checklistStatus={checklistStatus}
-            macroReport={{
-                aiBias: `${macroReport.aiDecision.goldBias} gold / ${macroReport.aiDecision.indicesBias} indices`,
-                alert: macroReport.marketData.economic_events[0] || macroReport.riskFactors[0] || 'No active alert.',
-                plan: macroReport.tradeImplication.whatToDo[0] || 'Stay selective and wait for aligned confirmation.',
-            }}
+            macroReport={macroSummary}
         />
     )
 }
