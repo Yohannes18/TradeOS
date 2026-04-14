@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { ApiError } from '@/lib/utils/errors'
 
 export interface AuthSession {
   userId: string
@@ -14,17 +14,13 @@ export interface AuthSession {
  *   // session.userId is now safe to use
  */
 export async function requireSession(): Promise<AuthSession> {
-  const { createServerClient } = await import('@/lib/supabase/server')
-  const cookieStore = await cookies()
-  const supabase = createServerClient(cookieStore)
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
 
   const { data: { user }, error } = await supabase.auth.getUser()
 
   if (error || !user) {
-    const err = new Error('Authentication required') as any
-    err.code = 'UNAUTHENTICATED'
-    err.httpStatus = 401
-    throw err
+    throw new ApiError(401, 'Authentication required.', { code: 'UNAUTHENTICATED' })
   }
 
   return { userId: user.id, email: user.email ?? '' }

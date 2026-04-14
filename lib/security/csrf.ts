@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { ApiError } from '@/lib/utils/errors'
 
 const ALLOWED_ORIGINS = [
   process.env.NEXT_PUBLIC_SITE_URL,
@@ -35,4 +36,10 @@ export function csrfError(): Response {
     { error: 'Forbidden', code: 'CSRF_VIOLATION' },
     { status: 403 }
   )
+}
+
+export function assertSameOrigin(request: NextRequest): void {
+  if (!validateCsrfOrigin(request)) {
+    throw new ApiError(403, 'CSRF validation failed.', { code: 'CSRF_VIOLATION' })
+  }
 }

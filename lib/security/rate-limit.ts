@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { ApiError } from '@/lib/utils/errors'
 
 /**
  * Rate limiting via Upstash Redis.
@@ -63,4 +64,26 @@ export function getIdentifier(request: NextRequest, userId?: string): string {
   if (userId) return `user:${userId}`
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown'
   return `ip:${ip}`
+}
+
+export async function enforceRateLimit(
+  request: NextRequest,
+  identifier: string,
+  key: LimiterKey = 'trade',
+): Promise<void> {
+  const blockedResponse = await checkRateLimit(key, getIdentifier(request, identifier))
+  if (!blockedResponse) return
+
+  let message = 'Too many requests.'
+  let details: unknown
+
+  try {
+    const payload = await blockedResponse.json() as { error?: string; code?: string; retryAfter?: number }
+    message = payload.error || message
+    details = payload
+  } catch {
+    details = undefined
+  }
+
+  throw new ApiError(429, message, details)
 }
