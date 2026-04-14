@@ -1,36 +1,38 @@
-import type { NextRequest } from 'next/server'
-import { ApiError } from '@/lib/utils/errors'
+import { NextRequest } from 'next/server'
 
-const STATEFUL_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const ALLOWED_ORIGINS = [
+  process.env.NEXT_PUBLIC_SITE_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+].filter(Boolean) as string[]
 
-function getRequestHost(request: NextRequest) {
-  return request.headers.get('x-forwarded-host') || request.headers.get('host')
-}
-
-export function assertSameOrigin(request: NextRequest) {
-  if (!STATEFUL_METHODS.has(request.method)) {
-    return
-  }
-
-  const requestHost = getRequestHost(request)
+/**
+ * Validate request origin to prevent CSRF attacks.
+ *
+ * Call this at the top of every POST, PATCH, DELETE handler:
+ *   if (!validateCsrfOrigin(request)) return csrfError()
+ *
+ * Why: Next.js App Router has no built-in CSRF protection.
+ * Cross-origin POST requests from malicious sites will execute
+ * against authenticated users if this check is missing.
+ */
+export function validateCsrfOrigin(request: NextRequest): boolean {
   const origin = request.headers.get('origin')
   const referer = request.headers.get('referer')
 
-  if (origin) {
-    const originHost = new URL(origin).host
-    if (originHost !== requestHost) {
-      throw new ApiError(403, 'Cross-site requests are not allowed.')
-    }
-    return
-  }
+  if (!origin && !referer) return false
 
-  if (referer) {
-    const refererHost = new URL(referer).host
-    if (refererHost !== requestHost) {
-      throw new ApiError(403, 'Cross-site requests are not allowed.')
-    }
-    return
+  try {
+    const source = origin ?? new URL(referer!).origin
+    return ALLOWED_ORIGINS.some((allowed) => source.startsWith(allowed))
+  } catch {
+    return false
   }
+}
 
-  throw new ApiError(403, 'Origin header is required for state-changing requests.')
+export function csrfError(): Response {
+  return Response.json(
+    { error: 'Forbidden', code: 'CSRF_VIOLATION' },
+    { status: 403 }
+  )
 }
