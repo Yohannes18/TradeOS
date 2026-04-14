@@ -119,7 +119,7 @@ export function DashboardContent({ userId, settings }: DashboardContentProps) {
       return
     }
 
-    if (data?.id && lastChecklistLogId) {
+    if (lastChecklistLogId) {
       setLastChecklistLogId(null)
     }
 

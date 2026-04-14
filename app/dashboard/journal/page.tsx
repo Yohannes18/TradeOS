@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { TradeJournalTable } from '@/components/dashboard/trade-journal-table'
+import type { JournalTradeRow } from '@/components/dashboard/trade-journal-table'
 import { getAuthenticatedUser } from '@/lib/auth/server-user'
 
 interface ExecutionRow {
@@ -90,10 +91,11 @@ export default async function JournalPage() {
     const metricMap = new Map(((metricRows || []) as MetricsRow[]).map((row) => [row.execution_id, row]))
     const journalMap = new Map(((journals || []) as JournalRow[]).map((row) => [row.execution_id, row]))
 
-    const trades = ((executions || []) as ExecutionRow[]).map((execution) => {
+    const trades: JournalTradeRow[] = ((executions || []) as ExecutionRow[]).map((execution) => {
         const preTrade = preTradeMap.get(execution.pre_trade_id)
         const metric = metricMap.get(execution.id)
         const journal = journalMap.get(execution.id)
+        const result: JournalTradeRow['result'] = metric?.win_loss ?? (execution.status === 'closed' ? 'breakeven' : 'pending')
 
         return {
             id: execution.id,
@@ -110,7 +112,7 @@ export default async function JournalPage() {
             ai_bias: preTrade?.ai_verdict || null,
             ai_recommendation: preTrade?.ai_verdict || 'STANDBY',
             notes: journal?.notes || null,
-            result: metric?.win_loss || (execution.status === 'closed' ? 'breakeven' : 'pending'),
+            result,
             session: null,
             emotions: journal?.emotions ? journal.emotions.join(', ') : null,
         }
