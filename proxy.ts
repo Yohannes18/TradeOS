@@ -1,40 +1,30 @@
 import { updateSession } from '@/lib/supabase/middleware'
-import { updateBetterAuthSession } from '@/lib/auth/middleware'
-import { applyTradingApiMiddleware } from '@/lib/security/trading-api-middleware'
 import { NextResponse } from 'next/server'
 import { type NextRequest } from 'next/server'
 
+// Public routes that never require authentication
+const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback', '/auth/confirm', '/auth/error']
+
 export async function proxy(request: NextRequest) {
-    const tradingApiResponse = await applyTradingApiMiddleware(request)
-    if (tradingApiResponse) {
-        return tradingApiResponse
-    }
+  const { pathname } = request.nextUrl
 
-    if (request.nextUrl.pathname.startsWith('/api/auth')) {
-        return NextResponse.next({ request })
-    }
+  // Allow public auth routes through immediately
+  if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
+    return NextResponse.next({ request })
+  }
 
-    if (process.env.BETTER_AUTH_ENABLED === 'true') {
-        try {
-            return await updateBetterAuthSession(request)
-        } catch {
-            return await updateSession(request)
-        }
-    }
+  // Cron endpoints authenticate via CRON_SECRET header (handled inside the route)
+  if (pathname.startsWith('/api/cron')) {
+    return NextResponse.next({ request })
+  }
 
-    return await updateSession(request)
+  // Single auth system: Supabase SSR only.
+  // Better Auth removed — dual-auth fallback was a silent security risk.
+  return updateSession(request)
 }
 
 export const config = {
-    matcher: [
-        /*
-         * Match all request paths except:
-         * - _next/static (static files)
-         * - _next/image (image optimization files)
-         * - favicon.ico (favicon file)
-         * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
-         * Feel free to modify this pattern to include more paths.
-         */
-        '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-    ],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
