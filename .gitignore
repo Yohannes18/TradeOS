@@ -26,3 +26,7 @@ tsconfig.tsbuildinfo
 .snowflake/
 .v0-trash/
 final.md
+
+# Lock file — using npm only
+pnpm-lock.yaml
+yarn.lock
