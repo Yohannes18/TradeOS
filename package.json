@@ -1,5 +1,5 @@
 {
-  "name": "my-project",
+  "name": "tradeos",
   "version": "0.2.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.5",
@@ -79,5 +80,10 @@
     "typescript": "5.7.3",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4"
+  },
+  "description": "Production-grade trading discipline and analytics platform",
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
   }
 }
