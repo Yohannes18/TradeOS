@@ -61,7 +61,7 @@ describe('JournalService', () => {
         mistakes: [],
         adherence_score: 0.9,
       }),
-    ).rejects.toMatchObject<ApiError>({
+    ).rejects.toMatchObject({
       status: 409,
     })
   })
@@ -77,7 +77,7 @@ describe('JournalService', () => {
         mistakes: [],
         adherence_score: 0.9,
       }),
-    ).rejects.toMatchObject<ApiError>({
+    ).rejects.toMatchObject({
       status: 404,
     })
   })
@@ -93,7 +93,7 @@ describe('JournalService', () => {
         mistakes: [],
         adherence_score: 0.9,
       }),
-    ).rejects.toMatchObject<ApiError>({
+    ).rejects.toMatchObject({
       status: 409,
     })
     expect(mockCreateJournal).not.toHaveBeenCalled()
