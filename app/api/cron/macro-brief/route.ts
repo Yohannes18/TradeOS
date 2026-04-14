@@ -2,21 +2,9 @@ import { NextResponse } from 'next/server'
 
 import { prewarmMacroBriefReports } from '../../macro-brief/route'
 
-function isAuthorized(request: Request): boolean {
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret) {
-        return false
-    }
-
-    const authHeader = request.headers.get('authorization')
-    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
-    const queryToken = new URL(request.url).searchParams.get('secret')
-
-    return bearerToken === cronSecret || queryToken === cronSecret
-}
-
 export async function GET(request: Request) {
-    if (!isAuthorized(request)) {
+    const authHeader = request.headers.get('authorization')
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
