@@ -20,19 +20,38 @@ function formatPrice(price: number, symbol: string): string {
     return price.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+function formatChange(change?: number): string {
+    if (typeof change !== 'number' || Number.isNaN(change)) return '+0.00'
+    return `${change >= 0 ? '+' : ''}${change.toFixed(2)}`
+}
+
+function formatChangePercent(changePercent?: number): string {
+    if (typeof changePercent !== 'number' || Number.isNaN(changePercent)) return '+0.00%'
+    return `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`
+}
+
 function directionFromTrend(trend?: string): 'up' | 'down' | 'flat' {
     if (trend === 'up') return 'up'
     if (trend === 'down') return 'down'
     return 'flat'
 }
 
-function buildTile(symbol: string, label: string, category: TileCategory, tvSymbol: string, value: number, trend?: string) {
+function buildTile(
+    symbol: string,
+    label: string,
+    category: TileCategory,
+    tvSymbol: string,
+    value: number,
+    trend?: string,
+    change?: number,
+    changePercent?: number,
+) {
     return {
         symbol,
         label,
         price: formatPrice(value, symbol),
-        change: '+0.00',
-        changePct: '+0.00%',
+        change: formatChange(change),
+        changePct: formatChangePercent(changePercent),
         direction: directionFromTrend(trend),
         bias: BIAS_MAP[symbol] || 'No dominant bias detected.',
         category,
@@ -46,12 +65,12 @@ export async function GET() {
         const data = report.marketData
 
         const tiles = [
-            buildTile('DXY', 'US Dollar Index', 'fx', 'TVC:DXY', data.dxy.value, data.dxy.trend),
-            buildTile('XAUUSD', 'Gold', 'metal', 'OANDA:XAUUSD', data.gold_price),
-            buildTile('US10Y', 'US 10Y Yield', 'bond', 'TVC:US10Y', data.us10y.value, data.us10y.trend),
-            buildTile('SPX', 'S&P 500', 'index', 'OANDA:SPX500USD', data.sp500),
-            buildTile('NAS100', 'Nasdaq 100', 'index', 'OANDA:NAS100USD', data.nasdaq),
-            buildTile('USOIL', 'WTI Crude Oil', 'energy', 'OANDA:WTICOUSD', data.oil_price),
+            buildTile('DXY', 'US Dollar Index', 'fx', 'TVC:DXY', data.dxy.value, data.dxy.trend, data.dxy.change, data.dxy.changePercent),
+            buildTile('XAUUSD', 'Gold', 'metal', 'OANDA:XAUUSD', data.gold_price, undefined, data.gold_change, data.gold_changePercent),
+            buildTile('US10Y', 'US 10Y Yield', 'bond', 'TVC:US10Y', data.us10y.value, data.us10y.trend, data.us10y.change, data.us10y.changePercent),
+            buildTile('SPX', 'S&P 500', 'index', 'OANDA:SPX500USD', data.sp500, undefined, data.sp500_change, data.sp500_changePercent),
+            buildTile('NAS100', 'Nasdaq 100', 'index', 'OANDA:NAS100USD', data.nasdaq, undefined, data.nasdaq_change, data.nasdaq_changePercent),
+            buildTile('USOIL', 'WTI Crude Oil', 'energy', 'OANDA:WTICOUSD', data.oil_price, undefined, data.oil_change, data.oil_changePercent),
         ].filter((tile) => Number.isFinite(Number(tile.price.replace(/[^0-9.-]/g, ''))))
 
         if (tiles.length < 4) {

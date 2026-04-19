@@ -23,13 +23,21 @@ interface InvestingSnapshot {
 }
 
 type MarketData = {
-    dxy: { value: number; trend: Trend }
-    us10y: { value: number; trend: Trend }
-    us2y: { value: number; trend: Trend }
+    dxy: { value: number; trend: Trend; change?: number; changePercent?: number }
+    us10y: { value: number; trend: Trend; change?: number; changePercent?: number }
+    us2y: { value: number; trend: Trend; change?: number; changePercent?: number }
     gold_price: number
+    gold_change?: number
+    gold_changePercent?: number
     sp500: number
+    sp500_change?: number
+    sp500_changePercent?: number
     nasdaq: number
+    nasdaq_change?: number
+    nasdaq_changePercent?: number
     oil_price: number
+    oil_change?: number
+    oil_changePercent?: number
     news: string[]
     newsArticles?: NewsArticle[]
     economic_events: string[]
@@ -1388,19 +1396,33 @@ async function generateMacroReport(
         dxy: {
             value: dxySnapshot?.value ?? dxy.regularMarketPrice ?? 0,
             trend: dxySnapshot?.trend ?? trendByAverages(dxy.regularMarketPrice, dxy.fiftyDayAverage, dxy.twoHundredDayAverage),
+            change: dxySnapshot?.change,
+            changePercent: dxySnapshot?.changePercent,
         },
         us10y: {
             value: us10ySnapshot?.value ?? us10y.regularMarketPrice ?? 0,
             trend: us10ySnapshot?.trend ?? trendByAverages(us10y.regularMarketPrice, us10y.fiftyDayAverage, us10y.twoHundredDayAverage),
+            change: us10ySnapshot?.change,
+            changePercent: us10ySnapshot?.changePercent,
         },
         us2y: {
             value: us2ySnapshot?.value ?? 0,
             trend: us2ySnapshot?.trend ?? 'range',
+            change: us2ySnapshot?.change,
+            changePercent: us2ySnapshot?.changePercent,
         },
         gold_price: goldSnapshot?.value ?? gold.regularMarketPrice ?? 0,
+        gold_change: goldSnapshot?.change,
+        gold_changePercent: goldSnapshot?.changePercent,
         sp500: sp500Snapshot?.value ?? spx.regularMarketPrice ?? 0,
+        sp500_change: sp500Snapshot?.change,
+        sp500_changePercent: sp500Snapshot?.changePercent,
         nasdaq: nasdaqSnapshot?.value ?? ndx.regularMarketPrice ?? 0,
+        nasdaq_change: nasdaqSnapshot?.change,
+        nasdaq_changePercent: nasdaqSnapshot?.changePercent,
         oil_price: oilSnapshot?.value ?? oil.regularMarketPrice ?? 0,
+        oil_change: oilSnapshot?.change,
+        oil_changePercent: oilSnapshot?.changePercent,
         news: normalizedNewsTitles.length > 0 ? normalizedNewsTitles.slice(0, 8) : relevantHeadlines.slice(0, 8),
         newsArticles: newsArticles.slice(0, 8),
         economic_events: ffEvents.slice(0, 8),
