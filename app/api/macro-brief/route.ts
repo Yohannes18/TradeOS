@@ -139,15 +139,6 @@ type MacroReportOptions = {
     forceFresh?: boolean
 }
 
-const YAHOO_SYMBOLS = [
-    'DX-Y.NYB',
-    '^TNX',
-    '^GSPC',
-    '^NDX',
-    'GC=F',
-    'CL=F',
-]
-
 const INVESTING_MARKET_ENDPOINTS = {
     dxy: {
         url: 'https://www.investing.com/currencies/us-dollar-index',
@@ -772,10 +763,6 @@ async function fetchInvestingSnapshot(url: string, sourceLabel: string): Promise
     }
 }
 
-function safeQuote(quotes: Quote[], symbol: string): Quote {
-    return quotes.find((q) => q.symbol === symbol) || { symbol }
-}
-
 function scoreHeadlineTone(headlines: string[]): SocialSentiment {
     const text = headlines.join(' ').toLowerCase()
     const bullishHits = ['rally', 'beat', 'optimism', 'cool inflation', 'rate cut', 'risk-on'].reduce(
@@ -1197,7 +1184,6 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         >
 
         const [
-            quoteRes,
             ffRes,
             investingRes,
             myfxbookRes,
@@ -1207,16 +1193,6 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             redditRes,
             investingMarketResults,
         ] = await Promise.allSettled([
-            fetchWithTimeout(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(YAHOO_SYMBOLS.join(','))}`, {
-                headers: headersWithReferer(
-                    {
-                        ...RSS_HEADERS,
-                        Accept: 'application/json,text/plain,*/*',
-                    },
-                    'https://finance.yahoo.com/',
-                    'https://finance.yahoo.com',
-                ),
-            }),
             fetchWithTimeout('https://nfs.faireconomy.media/ff_calendar_thisweek.xml', {
                 headers: headersWithReferer(RSS_HEADERS, 'https://www.forexfactory.com/', 'https://www.forexfactory.com'),
             }),
@@ -1243,12 +1219,6 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         let xTitles: string[] = []
         let socialTitles: string[] = []
         let newsArticles: NewsArticle[] = []
-
-        if (quoteRes.status === 'fulfilled' && quoteRes.value.ok) {
-            const payload = await quoteRes.value.json()
-            quotes = (payload?.quoteResponse?.result || []) as Quote[]
-            sources.add('Yahoo Finance')
-        }
 
         if (ffRes.status === 'fulfilled' && ffRes.value.ok) {
             const xml = await ffRes.value.text()
@@ -1392,12 +1362,12 @@ async function generateMacroReport(
         newsArticles,
     } = sourceBundle
 
-    const dxy = safeQuote(quotes, 'DX-Y.NYB')
-    const us10y = safeQuote(quotes, '^TNX')
-    const gold = safeQuote(quotes, 'GC=F')
-    const spx = safeQuote(quotes, '^GSPC')
-    const ndx = safeQuote(quotes, '^NDX')
-    const oil = safeQuote(quotes, 'CL=F')
+    const dxy: Quote = { symbol: 'DXY' }
+    const us10y: Quote = { symbol: 'US10Y' }
+    const gold: Quote = { symbol: 'XAUUSD' }
+    const spx: Quote = { symbol: 'SPX' }
+    const ndx: Quote = { symbol: 'NAS100' }
+    const oil: Quote = { symbol: 'USOIL' }
 
     const dxySnapshot = investingSnapshots.dxy
     const us10ySnapshot = investingSnapshots.us10y

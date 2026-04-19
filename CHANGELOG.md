@@ -4,7 +4,7 @@
 
 ### New Features
 - **AI Trade Analysis** — Real Claude API integration (`/api/ai-analysis`). Analyzes checklist + symbol and returns bias, confidence, verdict, key levels, risk note, and improvement tip. Auto-triggers when checklist score changes, with manual refresh button.
-- **Live Macro Desk** — Yahoo Finance market data for DXY, Gold, SPX, NAS100, EURUSD, GBPUSD, Oil, US10Y. Auto-refreshes every 60s. Click tiles to expand bias + TradingView deep links. Sentiment gauge + macro context table.
+- **Live Macro Desk** — Investing.com market data for DXY, Gold, SPX, NAS100, Oil, US10Y. Auto-refreshes every 60s. Click tiles to expand bias + TradingView deep links. Sentiment gauge + macro context table.
 - **Trade Result Dialog** — Log win/loss/breakeven with actual R:R, session, emotional state chips, mistake tags, and post-trade notes. P&L auto-calculated.
 - **Community Hub** — Anonymized leaderboard ranked by win rate × avg R:R. Curated strategy playbooks. Platform insights and stats.
 - **Analytics Charts** — Recharts equity curve, monthly P&L bar chart, result distribution donut, win rate by symbol, setup grade performance bars.
