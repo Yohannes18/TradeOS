@@ -134,7 +134,15 @@ type MacroSourceBundle = {
     xTitles: string[]
     socialTitles: string[]
     newsArticles: NewsArticle[]
-    investingSnapshots: Partial<Record<keyof typeof INVESTING_MARKET_ENDPOINTS, InvestingSnapshot | null>>
+    investingSnapshots: Partial<Record<keyof typeof MARKET_DATA_ENDPOINTS, InvestingSnapshot | null>>
+}
+
+type MarketDataSource = 'fred' | 'stooq'
+
+type MarketDataEndpoint = {
+    url: string
+    sourceLabel: string
+    sourceType: MarketDataSource
 }
 
 type ReportCacheEntry = {
@@ -147,34 +155,41 @@ type MacroReportOptions = {
     forceFresh?: boolean
 }
 
-const INVESTING_MARKET_ENDPOINTS = {
+const MARKET_DATA_ENDPOINTS: Record<string, MarketDataEndpoint> = {
     dxy: {
-        url: 'https://www.investing.com/currencies/us-dollar-index',
-        sourceLabel: 'Investing.com DXY',
+        url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS',
+        sourceLabel: 'FRED Dollar Index',
+        sourceType: 'fred',
     },
     us10y: {
-        url: 'https://www.investing.com/rates-bonds/u.s.-10-year-bond-yield',
-        sourceLabel: 'Investing.com US10Y',
+        url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10',
+        sourceLabel: 'FRED US10Y',
+        sourceType: 'fred',
     },
     us2y: {
-        url: 'https://www.investing.com/rates-bonds/u.s.-2-year-bond-yield',
-        sourceLabel: 'Investing.com US2Y',
+        url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2',
+        sourceLabel: 'FRED US2Y',
+        sourceType: 'fred',
     },
     sp500: {
-        url: 'https://www.investing.com/indices/us-spx-500',
-        sourceLabel: 'Investing.com S&P 500',
+        url: 'https://stooq.com/q/l/?s=^spx&f=sd2t2ohlcv&h&e=csv',
+        sourceLabel: 'Stooq S&P 500',
+        sourceType: 'stooq',
     },
     nasdaq: {
-        url: 'https://www.investing.com/indices/nq-100',
-        sourceLabel: 'Investing.com USTEC100',
+        url: 'https://stooq.com/q/l/?s=^ndq&f=sd2t2ohlcv&h&e=csv',
+        sourceLabel: 'Stooq Nasdaq 100',
+        sourceType: 'stooq',
     },
     gold: {
-        url: 'https://www.investing.com/commodities/gold',
-        sourceLabel: 'Investing.com Gold',
+        url: 'https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv',
+        sourceLabel: 'Stooq Gold',
+        sourceType: 'stooq',
     },
     oil: {
-        url: 'https://www.investing.com/commodities/crude-oil',
-        sourceLabel: 'Investing.com Crude Oil',
+        url: 'https://stooq.com/q/l/?s=cl.f&f=sd2t2ohlcv&h&e=csv',
+        sourceLabel: 'Stooq Crude Oil',
+        sourceType: 'stooq',
     },
 } as const
 
@@ -326,6 +341,60 @@ function normalizeNumericString(value?: string | null): number | null {
     if (!normalized) return null
     const parsed = Number(normalized)
     return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseCsvRows(csv: string): string[][] {
+    return csv
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.split(','))
+}
+
+function parseFredCsv(csv: string, sourceLabel: string): InvestingSnapshot | null {
+    const rows = parseCsvRows(csv)
+    if (rows.length < 2) return null
+
+    const values = rows
+        .slice(1)
+        .map((row) => normalizeNumericString(row[1]))
+        .filter((value): value is number => typeof value === 'number')
+
+    if (values.length === 0) return null
+
+    const value = values[values.length - 1]
+    const previous = values.length > 1 ? values[values.length - 2] : undefined
+    const change = typeof previous === 'number' ? value - previous : undefined
+    const changePercent = typeof previous === 'number' && previous !== 0 && typeof change === 'number' ? (change / previous) * 100 : undefined
+
+    return {
+        value,
+        change,
+        changePercent,
+        trend: trendByChangePercent(changePercent),
+        sourceLabel,
+    }
+}
+
+function parseStooqCsv(csv: string, sourceLabel: string): InvestingSnapshot | null {
+    const rows = parseCsvRows(csv)
+    if (rows.length < 2) return null
+
+    const data = rows[1]
+    const open = normalizeNumericString(data[3])
+    const close = normalizeNumericString(data[6])
+    if (close === null) return null
+
+    const change = open !== null ? close - open : undefined
+    const changePercent = open !== null && open !== 0 && typeof change === 'number' ? (change / open) * 100 : undefined
+
+    return {
+        value: close,
+        change,
+        changePercent,
+        trend: trendByChangePercent(changePercent),
+        sourceLabel,
+    }
 }
 
 function fmtNum(value?: number, decimals = 2): string {
@@ -753,19 +822,30 @@ function parseInvestingSnapshot(html: string, sourceLabel: string): InvestingSna
     }
 }
 
-async function fetchInvestingSnapshot(url: string, sourceLabel: string): Promise<InvestingSnapshot | null> {
+async function fetchMarketSnapshot(
+    url: string,
+    sourceLabel: string,
+    sourceType: MarketDataSource,
+): Promise<InvestingSnapshot | null> {
     try {
         const response = await fetchWithTimeout(
             url,
             {
-                headers: headersWithReferer(BROWSER_NAV_HEADERS, 'https://www.investing.com/', 'https://www.investing.com'),
+                headers: {
+                    'User-Agent': MARKET_DATA_USER_AGENT,
+                    Accept: 'text/csv,text/plain,*/*',
+                    'Cache-Control': 'no-cache',
+                    Pragma: 'no-cache',
+                },
             },
             12000,
         )
 
         if (!response.ok) return null
-        const html = await response.text()
-        return parseInvestingSnapshot(html, sourceLabel)
+        const body = await response.text()
+        return sourceType === 'fred'
+            ? parseFredCsv(body, sourceLabel)
+            : parseStooqCsv(body, sourceLabel)
     } catch {
         return null
     }
@@ -1187,8 +1267,8 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
         const sources = new Set<string>()
         const sourceHealth: SourceHealth[] = []
 
-        const investingEntries = Object.entries(INVESTING_MARKET_ENDPOINTS) as Array<
-            [keyof typeof INVESTING_MARKET_ENDPOINTS, (typeof INVESTING_MARKET_ENDPOINTS)[keyof typeof INVESTING_MARKET_ENDPOINTS]]
+        const investingEntries = Object.entries(MARKET_DATA_ENDPOINTS) as Array<
+            [keyof typeof MARKET_DATA_ENDPOINTS, (typeof MARKET_DATA_ENDPOINTS)[keyof typeof MARKET_DATA_ENDPOINTS]]
         >
 
         const [
@@ -1213,7 +1293,7 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             fetchXFeedHeadlines(6),
             fetchHeadlineSource('Reddit', 'https://www.reddit.com/r/investing/.rss', 'rss', 5),
             Promise.all(
-                investingEntries.map(async ([key, config]) => [key, await fetchInvestingSnapshot(config.url, config.sourceLabel)] as const),
+                investingEntries.map(async ([key, config]) => [key, await fetchMarketSnapshot(config.url, config.sourceLabel, config.sourceType)] as const),
             ),
         ])
 
@@ -1308,7 +1388,7 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             }
         }
 
-        const investingSnapshots: Partial<Record<keyof typeof INVESTING_MARKET_ENDPOINTS, InvestingSnapshot | null>> = {}
+        const investingSnapshots: Partial<Record<keyof typeof MARKET_DATA_ENDPOINTS, InvestingSnapshot | null>> = {}
         if (investingMarketResults.status === 'fulfilled') {
             for (const [key, snapshot] of investingMarketResults.value) {
                 investingSnapshots[key] = snapshot
