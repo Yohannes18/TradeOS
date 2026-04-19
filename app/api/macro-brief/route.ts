@@ -145,6 +145,15 @@ type MarketDataEndpoint = {
     sourceType: MarketDataSource
 }
 
+type TradingViewSnapshotKey = 'dxy' | 'sp500' | 'nasdaq' | 'gold'
+
+const TRADINGVIEW_SYMBOLS: Record<TradingViewSnapshotKey, string> = {
+    dxy: 'TVC:DXY',
+    sp500: 'SP:SPX',
+    nasdaq: 'NASDAQ:NDX',
+    gold: 'OANDA:XAUUSD',
+}
+
 type ReportCacheEntry = {
     fetchedAt: string
     expiresAt: string
@@ -851,6 +860,66 @@ async function fetchMarketSnapshot(
     }
 }
 
+async function fetchTradingViewSnapshots(): Promise<Partial<Record<TradingViewSnapshotKey, InvestingSnapshot>>> {
+    const entries = Object.entries(TRADINGVIEW_SYMBOLS) as Array<[TradingViewSnapshotKey, string]>
+
+    const response = await fetchWithTimeout(
+        'https://scanner.tradingview.com/global/scan',
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json,text/plain,*/*',
+                'User-Agent': MARKET_DATA_USER_AGENT,
+            },
+            body: JSON.stringify({
+                symbols: {
+                    tickers: entries.map(([, symbol]) => symbol),
+                    query: { types: [] },
+                },
+                columns: ['close', 'change', 'change_abs'],
+            }),
+        },
+        10000,
+    )
+
+    if (!response.ok) {
+        throw new Error(`TradingView scanner failed with status ${response.status}`)
+    }
+
+    const payload = (await response.json()) as {
+        data?: Array<{ s?: string; d?: [number?, number?, number?] }>
+    }
+
+    const bySymbol = new Map<string, [number?, number?, number?]>()
+    for (const item of payload.data || []) {
+        if (typeof item?.s === 'string' && Array.isArray(item?.d)) {
+            bySymbol.set(item.s, item.d)
+        }
+    }
+
+    const snapshots: Partial<Record<TradingViewSnapshotKey, InvestingSnapshot>> = {}
+    for (const [key, symbol] of entries) {
+        const data = bySymbol.get(symbol)
+        if (!data) continue
+
+        const close = typeof data[0] === 'number' && Number.isFinite(data[0]) ? data[0] : null
+        const changePct = typeof data[1] === 'number' && Number.isFinite(data[1]) ? data[1] : undefined
+        const changeAbs = typeof data[2] === 'number' && Number.isFinite(data[2]) ? data[2] : undefined
+        if (close === null) continue
+
+        snapshots[key] = {
+            value: close,
+            change: changeAbs,
+            changePercent: changePct,
+            trend: trendByChangePercent(changePct),
+            sourceLabel: `TradingView ${symbol}`,
+        }
+    }
+
+    return snapshots
+}
+
 function scoreHeadlineTone(headlines: string[]): SocialSentiment {
     const text = headlines.join(' ').toLowerCase()
     const bullishHits = ['rally', 'beat', 'optimism', 'cool inflation', 'rate cut', 'risk-on'].reduce(
@@ -1280,6 +1349,7 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             xRes,
             redditRes,
             investingMarketResults,
+            tradingViewSnapshotsRes,
         ] = await Promise.allSettled([
             fetchWithTimeout('https://nfs.faireconomy.media/ff_calendar_thisweek.xml', {
                 headers: headersWithReferer(RSS_HEADERS, 'https://www.forexfactory.com/', 'https://www.forexfactory.com'),
@@ -1295,6 +1365,7 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
             Promise.all(
                 investingEntries.map(async ([key, config]) => [key, await fetchMarketSnapshot(config.url, config.sourceLabel, config.sourceType)] as const),
             ),
+            fetchTradingViewSnapshots(),
         ])
 
         let quotes: Quote[] = []
@@ -1395,6 +1466,14 @@ async function fetchMacroSourceBundle(): Promise<MacroSourceBundle> {
                 if (snapshot) {
                     sources.add(snapshot.sourceLabel)
                 }
+            }
+        }
+
+        if (tradingViewSnapshotsRes.status === 'fulfilled') {
+            for (const [key, snapshot] of Object.entries(tradingViewSnapshotsRes.value) as Array<[TradingViewSnapshotKey, InvestingSnapshot | undefined]>) {
+                if (!snapshot) continue
+                investingSnapshots[key] = snapshot
+                sources.add(snapshot.sourceLabel)
             }
         }
 
